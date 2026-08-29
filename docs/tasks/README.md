@@ -6,10 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 1 — Repository bootstrap complete
-- Application code: BOOT-001 skeleton complete and verified
+- Current phase: Phase 2 — Authentication specification complete
+- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen
 - Measured benchmarks: none
-- Next task: `AUTH-001` (not started)
+- Next task: `AUTH-002` (Implement backend authentication) / `AUTH-003` (Implement browser authentication)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -146,13 +146,20 @@ Phase exit: the repository is runnable and testable even though product features
 
 ### AUTH-001: Freeze authentication API and schema details
 
-**Status:** Not Started  
+**Status:** Complete
+
 **Depends on:** `BOOT-001`  
 **Parallel safe:** No
 
-Resolve the open account validation, normalization, token-format, signing/key-management, cookie, rate-limit, and migration decisions in `API.md` and `DATABASE.md`. Add an ADR only if the decision is architecturally significant.
+Requirements:
 
-Verification: contract examples, status mappings, schema constraints, and security tests form a consistent matrix.
+- resolve open account validation, normalization, token-format, signing/key-management, cookie, rate-limit, and migration decisions in `API.md` and `DATABASE.md`. Add an ADR only if the decision is architecturally significant.
+
+Verification:
+
+- `./scripts/validate-docs.sh` passes; contract examples, status mappings, schema constraints, and security tests form a consistent matrix.
+
+Verification note (2026-08-29): authentication endpoints, request/response formats, validation regexes, token/cookie settings, status codes, and rate limits frozen in `docs/API.md` Section 35. PostgreSQL `users` and `refresh_tokens` tables, column limits, SHA-256 token hashing, and Flyway migration path frozen in `docs/DATABASE.md` Sections 4 and 5. `./scripts/validate-docs.sh` verified.
 
 ### AUTH-002: Implement backend authentication
 

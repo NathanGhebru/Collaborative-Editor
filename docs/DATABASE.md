@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** Reviewed draft; not frozen
+**Status:** User and authentication schemas frozen (AUTH-001); document/OT schemas pending DOC-001/PERS-001
 **Primary durable database:** PostgreSQL
 **Distributed runtime store:** Redis
 
@@ -82,7 +82,7 @@ users
 
 ---
 
-# 4. `users`
+# 4. `users` (Frozen - AUTH-001)
 
 Stores application users.
 
@@ -90,29 +90,29 @@ Stores application users.
 users
 -----
 id                  UUID PRIMARY KEY
-username            VARCHAR(...) NOT NULL UNIQUE
-email               VARCHAR(...) NOT NULL UNIQUE
-password_hash       VARCHAR(...) NOT NULL
-display_name        VARCHAR(...) NOT NULL
-account_status      VARCHAR(...) NOT NULL
-created_at          TIMESTAMPTZ NOT NULL
-updated_at          TIMESTAMPTZ NOT NULL
+username            VARCHAR(32) NOT NULL UNIQUE
+email               VARCHAR(255) NOT NULL UNIQUE
+password_hash       VARCHAR(72) NOT NULL
+display_name        VARCHAR(64) NOT NULL
+account_status      VARCHAR(16) NOT NULL DEFAULT 'ACTIVE'
+created_at          TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+updated_at          TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 ```
 
-Recommended status values:
+Status values:
 
 ```text
 ACTIVE
 DISABLED
 ```
 
-Usernames and emails should use normalized uniqueness rules.
+Usernames and emails are stored in lower-case with unique index constraints.
 
-Passwords are never stored directly.
+Passphrase algorithm: BCrypt with cost factor 10 (producing a 60-72 byte string). Passwords are never stored directly.
 
 ---
 
-# 5. `refresh_tokens`
+# 5. `refresh_tokens` (Frozen - AUTH-001)
 
 Stores refresh-token verifiers.
 
@@ -120,28 +120,30 @@ Stores refresh-token verifiers.
 refresh_tokens
 --------------
 id                  UUID PRIMARY KEY
-user_id             UUID NOT NULL REFERENCES users(id)
-token_hash          VARCHAR(...) NOT NULL UNIQUE
+user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
+token_hash          VARCHAR(64) NOT NULL UNIQUE
 expires_at          TIMESTAMPTZ NOT NULL
 revoked_at          TIMESTAMPTZ NULL
-replaced_by_id      UUID NULL
-created_at          TIMESTAMPTZ NOT NULL
+replaced_by_id      UUID NULL REFERENCES refresh_tokens(id)
+created_at          TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 last_used_at        TIMESTAMPTZ NULL
-user_agent          VARCHAR(...) NULL
-ip_metadata         VARCHAR(...) NULL
+user_agent          VARCHAR(512) NULL
+ip_metadata         VARCHAR(45) NULL
 ```
 
-The raw refresh token is not stored.
+The raw 256-bit refresh token is sent to the browser in an `HttpOnly` cookie and never stored directly in the database. `token_hash` stores the hex-encoded SHA-256 hash of the token string.
 
 Indexes:
 
 ```text
-user_id
-token_hash UNIQUE
-expires_at
+idx_refresh_tokens_user_id ON refresh_tokens(user_id)
+idx_refresh_tokens_token_hash UNIQUE ON refresh_tokens(token_hash)
+idx_refresh_tokens_expires_at ON refresh_tokens(expires_at)
 ```
 
-Expired and revoked records may be periodically removed.
+Migration Tool: Flyway migrations located at `backend/src/main/resources/db/migration/V1__init_auth_schema.sql`.
+
+Expired and revoked records may be periodically purged via a scheduled cleanup query.
 
 ---
 
@@ -159,8 +161,6 @@ sync_epoch          UUID NOT NULL
 current_revision    BIGINT NOT NULL
 created_at          TIMESTAMPTZ NOT NULL
 updated_at          TIMESTAMPTZ NOT NULL
-```
-
 Initial state:
 
 ```text

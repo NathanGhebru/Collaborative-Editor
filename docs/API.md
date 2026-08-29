@@ -1,8 +1,9 @@
+
 # REST API Contract — Real-Time Collaborative Editor
 
 ## Status
 
-**Status:** Reviewed draft; not frozen
+**Status:** Authentication contract frozen (AUTH-001); document/realtime REST endpoints pending DOC-001
 **API version:** v1
 **Base path:** `/api/v1`
 
@@ -1089,22 +1090,38 @@ An endpoint may intentionally return `404` rather than reveal the existence of a
 
 ---
 
-# 35. Open Contract Decisions
+# 35. Frozen Authentication Decisions (AUTH-001)
 
-Before authentication and document endpoints are frozen, dedicated contract tasks must define:
+The following decisions freeze the authentication API behavior for implementation:
 
-- username syntax, case normalization, and length;
-- email normalization and maximum length;
-- password acceptance limits without embedding change-prone password-strength advice in the wire contract;
-- title, display-name, version-label, and initial-content limits;
-- default/maximum page size and opaque cursor encoding;
-- access-token encoding and signing/key-management approach;
-- refresh-cookie attributes and cross-site request-forgery protection;
-- unknown JSON-field handling;
-- whether forbidden resources consistently return `403` or are concealed as `404`;
-- concrete rate-limit policies and response metadata.
+### 35.1 Validation and Normalization
+* **Username Syntax & Length**: Must match `^[a-zA-Z0-9_]{3,32}$` (ASCII alphanumeric and underscores, 3 to 32 characters). Invalid inputs return `INVALID_USERNAME` (422).
+* **Username Normalization**: Trimmed and converted to lower-case for uniqueness checks and database persistence.
+* **Email Syntax & Length**: Validated against standard RFC 5322 format; maximum 255 characters. Invalid inputs return `INVALID_EMAIL` (422).
+* **Email Normalization**: Trimmed of leading/trailing whitespace and converted to lower-case for uniqueness checks and database persistence.
+* **Display Name**: Trimmed UTF-8 string; minimum 1 character, maximum 64 characters.
+* **Password Limits**: Minimum 8 characters, maximum 128 characters. Passwords failing length requirements return `WEAK_PASSWORD` (422). Passwords are hashed using BCrypt with a cost factor of 10.
 
-These are validation and compatibility decisions, not permission to omit server-side validation.
+### 35.2 Token Format & Signing
+* **Access Tokens**: Short-lived JWTs signed with HMAC-SHA256 (HS256) using a secret key of at least 256 bits supplied via `JWT_SECRET`.
+* **Token Claims**: `sub` (user UUID string), `username`, `email`, `iat` (issued timestamp), `exp` (expiration timestamp, default 900 seconds / 15 minutes), `jti` (unique token ID UUID).
+
+### 35.3 Refresh Token Cookie & Revocation
+* **Cookie Name**: `rt_token`
+* **Cookie Payload**: 256-bit cryptographically secure random token string (43-character Base64URL string). Stored in PostgreSQL as a SHA-256 hex hash (`token_hash`).
+* **Cookie Attributes**: `HttpOnly=true`, `Secure=true` in production, `SameSite=Strict`, `Path=/api/v1/auth`, `Max-Age=604800` (7 days).
+* **Rotation**: Every call to `POST /auth/refresh` revokes the used refresh token, links `replaced_by_id`, and issues a new refresh token and cookie.
+* **Revocation**: `POST /auth/logout` sets `revoked_at` on the refresh token record in the database and clears the `rt_token` cookie (`Max-Age=0`).
+
+### 35.4 Rate Limiting & Security
+* **Rate Limits**: `POST /auth/login` and `POST /auth/register` are limited to 5 attempts per minute per IP address / identifier.
+* **Rate Limit Exceeded**: Returns HTTP status `429 Too Many Requests` with error code `RATE_LIMITED`.
+* **Resource Concealment**: Unauthorized access to document resources returns `404 DOCUMENT_NOT_FOUND` rather than `403` to avoid revealing resource existence.
+
+### 35.5 Remaining Open Decisions
+* Document title, display-name, version-label, and initial-content limits remain to be frozen under `DOC-001`.
+* OT vector composite details remain to be frozen under `OT-001`.
+* Real-time WebSocket limits remain to be frozen under `RT-001`.
 
 ---
 
