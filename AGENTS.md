@@ -46,6 +46,29 @@ Before making significant changes:
 
 ---
 
+# Parallel Agent Development
+
+Multiple AI agents may work on this repository concurrently.
+
+Each agent should assume that another agent may be modifying a different
+subsystem in a separate Git branch or worktree.
+
+Rules:
+
+1. Only modify files required for the assigned task.
+2. Avoid unrelated refactors.
+3. Do not reformat unrelated files.
+4. Do not change shared contracts unless the assigned task explicitly
+   requires it.
+5. Prefer adding interfaces over modifying another agent's subsystem.
+6. If a required shared contract must change, document the change clearly.
+7. Keep commits scoped to one task.
+8. Do not merge other agents' branches yourself unless explicitly asked.
+9. Run tests relevant to your subsystem before completing work.
+10. Ensure your changes can be merged independently.
+
+---
+
 # Documentation Hierarchy
 
 When documentation conflicts, use this priority order:

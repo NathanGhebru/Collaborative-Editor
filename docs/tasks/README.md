@@ -6,10 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 0 — Architecture and specification
-- Application code: not started
+- Current phase: Phase 1 — Repository bootstrap
+- Application code: BOOT-001 skeleton implemented; final local verification outstanding
 - Measured benchmarks: none
-- First application task after this review: `BOOT-001`
+- Active task: `BOOT-001`
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -111,7 +111,8 @@ Phase exit: `PLAN-001` complete. Unresolved decisions may remain only when assig
 
 ### BOOT-001: Create the runnable project skeleton
 
-**Status:** Not Started  
+**Status:** In Progress
+
 **Depends on:** `PLAN-001`  
 **Parallel safe:** Backend and frontend scaffolding may proceed in separate worktrees after tool/version choices are recorded.
 
@@ -134,6 +135,8 @@ docker compose up --build
 ```
 
 Acceptance: services become healthy, the frontend reaches the backend, all starter checks pass, and a clean clone can follow the documented setup.
+
+Verification note (2026-08-29): backend Maven test and verify, plus frontend lint, type-check, production build, and unit test, pass. The Compose configuration parses successfully. Completing the live-container health gate requires the Docker Desktop Linux daemon to be running.
 
 Phase exit: the repository is runnable and testable even though product features are not implemented.
 
@@ -545,4 +548,4 @@ Phase exit: every stated improvement links to reproducible before/after evidence
 
 ## Next task
 
-After `PLAN-001` is verified and marked complete, implement `BOOT-001: Create the runnable project skeleton`. Do not begin OT, WebSocket, Redis coordination, or AWS work during bootstrap.
+Complete `BOOT-001`'s remaining local verification gates before starting the next task. Do not begin OT, WebSocket, Redis coordination, or AWS work during bootstrap.

@@ -2,7 +2,7 @@
 
 A resume-quality collaborative text editor designed around the hard parts of real-time systems: concurrent edits, deterministic convergence, reconnect recovery, durable history, and multi-instance WebSocket coordination.
 
-The repository is currently in its architecture and specification phase. Application bootstrap and executable setup commands have not been implemented yet.
+The repository currently provides a runnable bootstrap: a Spring Boot health service, a React status page, and local PostgreSQL and Redis containers. Product features are added in later phases.
 
 ## Planned capabilities
 
@@ -69,6 +69,37 @@ The project also plans to evaluate a 40% synchronization-latency improvement and
 
 The documentation hierarchy and development rules are defined in [AGENTS.md](AGENTS.md).
 
+## Local development
+
+Prerequisites: JDK 21, Maven 3.9+, Node.js 22+, Docker Desktop with Docker Compose, and a POSIX shell (Git Bash or WSL on Windows).
+
+Start local PostgreSQL and Redis:
+
+```bash
+./scripts/start-infra.sh
+```
+
+In separate terminals, start the backend and frontend:
+
+```bash
+./scripts/start-backend.sh
+./scripts/start-frontend.sh
+```
+
+The frontend is served at `http://localhost:5173` and proxies its health check to the backend at `http://localhost:8080/actuator/health`. With both processes running, check the full bootstrap path:
+
+```bash
+./scripts/smoke-test.sh
+```
+
+Run all starter tests:
+
+```bash
+./scripts/test-all.sh
+```
+
+`docker compose up --build` also starts the local dependency containers. Copy `.env.example` to `.env` only to override local ports; it intentionally contains no credentials. `./scripts/stop-dev.sh` stops the containers.
+
 ## Development status
 
 The accepted decisions currently select:
@@ -79,4 +110,4 @@ The accepted decisions currently select:
 - Redis Pub/Sub plus expiring leader leases for multi-instance coordination,
 - an AWS target based on ECS Fargate, RDS, ElastiCache, S3, and CloudFront.
 
-The first application task is repository bootstrap. Until that task is complete, commands such as `docker compose up` and project test scripts are planned interfaces rather than working setup instructions.
+BOOT-001 establishes the executable project skeleton only. Authentication, documents, editing, OT, WebSockets, Redis coordination, history, AWS deployment, and measured benchmarks are intentionally not implemented yet.
