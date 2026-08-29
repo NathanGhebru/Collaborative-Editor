@@ -6,10 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 1 — Repository bootstrap
-- Application code: BOOT-001 skeleton implemented; final local verification outstanding
+- Current phase: Phase 1 — Repository bootstrap complete
+- Application code: BOOT-001 skeleton complete and verified
 - Measured benchmarks: none
-- Active task: `BOOT-001`
+- Next task: `AUTH-001` (not started)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -111,7 +111,7 @@ Phase exit: `PLAN-001` complete. Unresolved decisions may remain only when assig
 
 ### BOOT-001: Create the runnable project skeleton
 
-**Status:** In Progress
+**Status:** Complete
 
 **Depends on:** `PLAN-001`  
 **Parallel safe:** Backend and frontend scaffolding may proceed in separate worktrees after tool/version choices are recorded.
@@ -136,7 +136,7 @@ docker compose up --build
 
 Acceptance: services become healthy, the frontend reaches the backend, all starter checks pass, and a clean clone can follow the documented setup.
 
-Verification note (2026-08-29): backend Maven test and verify, plus frontend lint, type-check, production build, and unit test, pass. The Compose configuration parses successfully. Completing the live-container health gate requires the Docker Desktop Linux daemon to be running.
+Verification note (2026-08-29): the canonical `docker compose up --build --wait` and `./scripts/test-all.sh` gates pass. PostgreSQL and Redis report healthy; direct PostgreSQL/Redis checks pass; Spring Boot reports `UP`; the frontend development proxy and cross-stack smoke test reach backend health successfully; and the canonical start/stop lifecycle scripts clean up containers after application listeners are stopped.
 
 Phase exit: the repository is runnable and testable even though product features are not implemented.
 
@@ -548,4 +548,4 @@ Phase exit: every stated improvement links to reproducible before/after evidence
 
 ## Next task
 
-Complete `BOOT-001`'s remaining local verification gates before starting the next task. Do not begin OT, WebSocket, Redis coordination, or AWS work during bootstrap.
+`BOOT-001` is complete. `AUTH-001` is the next task in sequence and has not been started. Do not begin OT, WebSocket, Redis coordination, or AWS work during bootstrap.
