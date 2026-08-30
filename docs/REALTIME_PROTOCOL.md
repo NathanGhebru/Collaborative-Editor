@@ -364,9 +364,10 @@ text size <= configured maximum
 
 Positions and lengths use UTF-16 code units, as frozen by ADR-001.
 
-The Java and TypeScript implementations must use identical UTF-16 indexing semantics.
-
-Java utilities must explicitly implement equivalent semantics.
+Surrogate-Pair Policy:
+- Positions and deletion boundaries must not bisect UTF-16 surrogate pairs (`0xD800`–`0xDBFF` high surrogate followed by `0xDC00`–`0xDFFF` low surrogate).
+- If an operation specifies a position or boundary between a surrogate pair, it is rejected with `INVALID_POSITION`.
+- The Java and TypeScript implementations must use identical UTF-16 indexing and validation semantics.
 
 ---
 
@@ -388,6 +389,8 @@ length > 0
 position + length <= document length
 ```
 
+Neither `position` nor `position + length` may split a UTF-16 surrogate pair.
+
 ## 16.1 Server-Emitted `NO_OP`
 
 Transformation may remove the effect of an otherwise valid client operation, for example when its entire delete range was already deleted concurrently. The server can emit:
@@ -402,19 +405,11 @@ Transformation may remove the effect of an otherwise valid client operation, for
 
 ---
 
-# 17. Proposed Operation Group
+# 17. Server-Emitted Operation Group
 
-An editor action may require multiple primitive operations.
+A logical operation emitted by the server may consist of multiple primitives executed sequentially.
 
-Example replacement:
-
-```text
-delete selection
-+
-insert replacement
-```
-
-The client may send:
+Example split deletion resulting from insert-wins transformation:
 
 ```json
 {
@@ -426,21 +421,18 @@ The client may send:
       "length": 5
     },
     {
-      "kind": "INSERT",
-      "position": 10,
-      "text": "new text"
+      "kind": "DELETE",
+      "position": 18,
+      "length": 5
     }
   ]
 }
 ```
 
-A group represents one logical operation. It can be generated canonically by the server when insert-wins transformation splits a delete, even if client-authored groups are disabled.
-
-Its primitives are transformed and accepted atomically.
-
-A group would consume one canonical revision unless a superseding decision changes this rule.
-
-Client-authored wire-level `GROUP` is not frozen or enabled because ADR-001 does not yet define complete group-vs-group transformation semantics. Until that decision is completed, a server must reject a client-authored `GROUP` with `INVALID_OPERATION`; clients must not transmit one. The same decision task must still complete the server-generated composite representation required by insert-wins before OT implementation.
+Semantics:
+* A server-emitted group represents one logical operation committed atomically under one canonical revision.
+* Primitives within the group are executed sequentially (each primitive operates on the state produced by prior primitives in the group).
+* Client-authored `GROUP` is disabled for protocol v1. Clients transmit individual primitive operations; if a client transmits a `GROUP`, the server rejects it with `INVALID_OPERATION`.
 
 ---
 
@@ -630,90 +622,71 @@ TypeScript client
 
 # 27. Insert vs Insert
 
-If two inserts occur at different positions, the later-transformed position shifts as required.
-
-Example:
-
-```text
-A = insert(10, "abc")
-B = insert(5, "x")
-```
-
-Transforming A after B produces:
-
-```text
-insert(11, "abc")
-```
-
-For the same position, deterministic operation identity ordering resolves which text appears first.
+Let $A = \text{INSERT}(a, \text{text}_A)$ and $B = \text{INSERT}(b, \text{text}_B)$ with $l_B = \text{length}(\text{text}_B)$:
+- If $a < b$: $A' = \text{INSERT}(a, \text{text}_A)$
+- If $a > b$: $A' = \text{INSERT}(a + l_B, \text{text}_A)$
+- If $a == b$: Tie-breaking compares $(A.\text{clientId}, A.\text{clientOperationId})$ vs $(B.\text{clientId}, B.\text{clientOperationId})$ lexicographically:
+  - If $K_A < K_B$ ($A$ has precedence): $A' = \text{INSERT}(a, \text{text}_A)$
+  - If $K_A > K_B$ ($B$ has precedence): $A' = \text{INSERT}(a + l_B, \text{text}_A)$
 
 ---
 
 # 28. Insert vs Delete
 
-An insertion after a deletion may shift left.
-
-An insertion inside a concurrently deleted region uses the explicit OT boundary policy defined by the transformation implementation.
-
-That policy must be unit tested and identical on client and server.
+Let $A = \text{INSERT}(a, \text{text}_A)$ and $B = \text{DELETE}(b, l_B)$ with $end_B = b + l_B$:
+- If $a \le b$: $A' = \text{INSERT}(a, \text{text}_A)$
+- If $a \ge end_B$: $A' = \text{INSERT}(a - l_B, \text{text}_A)$
+- If $b < a < end_B$: Under insert-wins policy, the insert survives and collapses to the deletion start position:
+  $A' = \text{INSERT}(b, \text{text}_A)$
 
 ---
 
 # 29. Delete vs Insert
 
-A deletion may shift or expand relative to a concurrent insert depending on whether the inserted text falls:
-
-* before the deleted range,
-* at a boundary,
-* inside the deleted range,
-* after the range.
-
-The selected intent-preservation semantics must be documented in transformation tests.
+Let $A = \text{DELETE}(a, l_A)$ and $B = \text{INSERT}(b, \text{text}_B)$ with $end_A = a + l_A$ and $l_B = \text{length}(\text{text}_B)$:
+- If $b \le a$: $A' = \text{DELETE}(a + l_B, l_A)$
+- If $b \ge end_A$: $A' = \text{DELETE}(a, l_A)$
+- If $a < b < end_A$: Under insert-wins policy, the concurrent insertion survives. $A$ splits into a sequential `GROUP` of two deletions around $B$:
+  $$A' = \text{GROUP}([\text{DELETE}(a, b - a), \text{DELETE}(a + l_B, end_A - b)])$$
 
 ---
 
 # 30. Delete vs Delete
 
-Concurrent deletions may:
-
-* remain independent,
-* shift,
-* partially overlap,
-* fully overlap,
-* become a no-op.
-
-A transformed zero-length delete becomes:
-
-```text
-NO_OP
-```
-
-while still permitting the original client operation to receive a canonical acknowledgement.
+Let $A = \text{DELETE}(a, l_A)$ and $B = \text{DELETE}(b, l_B)$ with $end_A = a + l_A$ and $end_B = b + l_B$:
+- If $end_B \le a$: $A' = \text{DELETE}(a - l_B, l_A)$
+- If $b \ge end_A$: $A' = \text{DELETE}(a, l_A)$
+- If overlapping:
+  - $overlap = \max(0, \min(end_A, end_B) - \max(a, b))$
+  - $newLength = l_A - overlap$
+  - If $newLength == 0$: $A' = \text{NO\_OP}$
+  - Else if $a < b$:
+    - If $end_A \le end_B$: $A' = \text{DELETE}(a, newLength)$
+    - If $end_A > end_B$: $A' = \text{DELETE}(a, l_A - l_B)$
+  - Else ($a \ge b$):
+    - $A' = \text{DELETE}(b, newLength)$
 
 ---
 
-# 31. Client Rebase
+# 31. Client Pending Queue and Rebase Model
 
-Suppose a client has pending local operation `L`.
+The client implements a 3-state pending model with a single in-flight operation over WebSocket and a local sequential buffer:
 
-A remote canonical operation `R` arrives.
+1. **State 1: Synchronized** (`inFlight == null`, buffer empty).
+2. **State 2: Awaiting In-Flight** (operation $A$ in flight with `baseRevision = confirmedRevision`, buffer empty).
+3. **State 3: Awaiting with Buffer** (operation $A$ in flight, local edits $B_1 \dots B_n$ queued locally and not yet transmitted).
 
-The client computes conceptually:
+When remote canonical operation $R$ arrives at `confirmedRevision + 1`:
+- $R_0 = transform(R, A)$, $A' = transform(A, R)$.
+- For $i = 1 \dots n$:
+  $R_i = transform(R_{i-1}, B_i)$, $B_i' = transform(B_i, R_{i-1})$.
+- Apply $R$ to confirmed document; advance `confirmedRevision = R.revision`.
+- Replace in-flight with $A'$; replace local buffer with $[B_1', \dots, B_n']$.
+- Apply $R_n$ to visible optimistic document.
 
-```text
-R' = transform(R, L)
-L' = transform(L, R)
-```
-
-The client:
-
-1. applies `R'` to the visible local document,
-2. replaces pending `L` with `L'`,
-3. advances its confirmed revision.
-
-For multiple pending operations, transformation proceeds through the queue in order.
-
-This describes rebase intent, not a complete causal submission model. A later local operation can be positioned relative to an earlier unacknowledged operation even though both carry the same canonical `baseRevision`. The protocol must resolve the submission/dependency model described in ADR-001 before more than one local operation may be in flight.
+When acknowledgement for $A$ arrives:
+- Clear in-flight operation.
+- If buffer is non-empty, dequeue first buffered operation $B_1$ (or composed buffer), set `baseRevision = confirmedRevision`, set as new in-flight, and transmit `client.operation`.
 
 ---
 
@@ -1047,17 +1020,16 @@ The protocol must preserve:
 
 ---
 
-# 48. Open Protocol Decisions
+# 48. Protocol Status and Open Decisions
 
-The protocol cannot be frozen until these items are resolved through dedicated decision tasks and deterministic shared test vectors where applicable:
+The OT core synchronization blockers are resolved under **OT-001**:
+1. **Multiple pending local operations:** Frozen to single in-flight operation + local sequential buffer model with progressive rebase (Section 31; ADR-001 Sections 23–24).
+2. **Composite GROUP transformation:** Frozen to sequential execution semantics with client-authored GROUP deferred for v1 and server-emitted split DELETEs fully specified (Sections 17, 29; ADR-001 Section 21).
 
-1. causal submission and acknowledgement behavior for more than one pending local operation;
-2. complete `GROUP` transformation semantics or explicit deferral of `GROUP` from v1;
-3. preservation and user recovery of unacknowledged intent when incremental rebase is impossible;
-4. numeric WebSocket close-code mapping and which close categories permit automatic reconnect;
-5. exact configurable frame, operation, document, pending-queue, and rate limits.
-
-The first three are correctness blockers. The last two must be fixed before interoperability and security testing, but do not block repository bootstrap or isolated OT primitive tests.
+The remaining protocol decisions are assigned to downstream roadmap tasks:
+3. Preservation and user recovery of unacknowledged intent across epoch changes (version restore): Assigned to `HIST-001`.
+4. Numeric WebSocket close-code mapping and reconnect category rules: Assigned to `RT-001`.
+5. Exact configurable frame, operation, document, pending-queue, and rate limits: Assigned to `RT-001`.
 
 ---
 

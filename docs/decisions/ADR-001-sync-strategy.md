@@ -219,13 +219,13 @@ INSERT
 DELETE
 ```
 
-The following composite operation is required as a possible canonical transformation result, but client-authored use is not yet implementation-ready:
+The following composite operation is accepted as a server-emitted canonical transformation result:
 
 ```text
 GROUP
 ```
 
-`GROUP` represents one logical operation containing multiple primitives. Insert-wins transformation can produce a `GROUP` even when the client submitted one `DELETE`, so the server-side composite model cannot be skipped. Section 21 does not yet define a complete deterministic group-vs-group transformation algorithm; OT implementation is blocked until canonical composite behavior is resolved. Client-authored `GROUP` may still be deferred separately.
+`GROUP` represents one logical operation containing multiple primitives executed sequentially. Insert-wins transformation produces a `GROUP` when a concurrent insertion falls strictly inside a deleted range, splitting the deletion into two segments around the inserted text. Client-authored wire-level `GROUP` is deferred for protocol v1; clients transmit individual primitive operations.
 
 ---
 
@@ -279,11 +279,11 @@ position + length <= document length
 
 ---
 
-# 9. Proposed GROUP
+# 9. Server-Emitted GROUP
 
-A logical editor action may consist of multiple primitives.
+A logical operation emitted by the server may consist of multiple primitives.
 
-Example replacement:
+Example split deletion resulting from insert-wins transformation:
 
 ```json
 {
@@ -292,23 +292,24 @@ Example replacement:
     {
       "kind": "DELETE",
       "position": 5,
-      "length": 4
+      "length": 2
     },
     {
-      "kind": "INSERT",
-      "position": 5,
-      "text": "new"
+      "kind": "DELETE",
+      "position": 8,
+      "length": 2
     }
   ]
 }
 ```
 
-If the outstanding transformation decision is resolved as intended, a group:
+Semantics:
 
-* is transformed as one user intent,
-* is persisted atomically,
+* primitives within a `GROUP` are applied sequentially (each primitive operates on the state produced by prior primitives in the group),
+* persisted and broadcast atomically,
 * receives one client operation ID,
-* receives one canonical revision.
+* consumes exactly one canonical revision,
+* if transformation reduces a `GROUP` to 1 primitive, it flattens to that primitive; if 0 primitives remain, it collapses to `NO_OP`.
 
 ---
 
@@ -650,33 +651,18 @@ If:
 a < b < endA
 ```
 
-the insertion survives.
+the insertion survives under insert-wins semantics.
 
-The transformed delete becomes a GROUP deleting only the original characters.
-
-Example:
+The transformed delete becomes a sequential `GROUP` deleting only the original characters around the insertion:
 
 ```text
-A = DELETE(10, 10)
-B = INSERT(15, "xyz")
+A' = GROUP([
+  DELETE(a, b - a),
+  DELETE(a + insertLength, endA - b)
+])
 ```
 
-A originally deletes:
-
-```text
-original characters 10..19
-```
-
-After B, transform A into conceptually:
-
-```text
-DELETE(10, 5)
-DELETE(13, 5)
-```
-
-executed sequentially.
-
-The concurrent insertion `"xyz"` survives.
+Primitives execute sequentially: the first primitive deletes the `b - a` code units preceding `b` at position `a`. The second primitive deletes the remaining `endA - b` code units of original text starting at `a + insertLength` (skipping the inserted text).
 
 ---
 
@@ -689,7 +675,7 @@ A = DELETE(a, lengthA)
 B = DELETE(b, lengthB)
 ```
 
-Compute the overlap between the two original ranges.
+Compute the overlap between the two original ranges:
 
 ## B entirely before A
 
@@ -702,7 +688,7 @@ b + lengthB <= a
 then:
 
 ```text
-A.position -= lengthB
+A' = DELETE(a - lengthB, lengthA)
 ```
 
 ---
@@ -715,29 +701,20 @@ If:
 b >= a + lengthA
 ```
 
-A remains unchanged.
+then:
+
+```text
+A' = DELETE(a, lengthA)
+```
 
 ---
 
-## Overlap
-
-The portion already removed by B is removed from A's intended delete.
+## Overlapping deletes
 
 Compute:
 
 ```text
-overlap =
-max(
-  0,
-  min(a + lengthA, b + lengthB)
-  -
-  max(a, b)
-)
-```
-
-Then:
-
-```text
+overlap = max(0, min(a + lengthA, b + lengthB) - max(a, b))
 newLength = lengthA - overlap
 ```
 
@@ -747,16 +724,23 @@ If:
 newLength == 0
 ```
 
-A becomes:
+then `B` fully covers `A`, so:
 
 ```text
-NO_OP
+A' = NO_OP
 ```
 
-Otherwise:
+Otherwise (`newLength > 0`):
 
-* if A begins before B, its transformed position remains `a`,
-* if A begins inside B's deleted range, its transformed position becomes `b`.
+1. If `A` begins before `B` (`a < b`):
+   - If `a + lengthA <= b + lengthB`: `A` overlaps `B` at its tail, so:
+     `A' = DELETE(a, newLength)`
+   - If `a + lengthA > b + lengthB` (`B` is strictly inside `A`): `B` cuts out a middle segment, collapsing the remaining characters into a contiguous range, so:
+     `A' = DELETE(a, lengthA - lengthB)`
+
+2. If `A` begins at or after `B` (`a >= b`):
+   - Since `newLength > 0` and `B` does not fully cover `A`, `A` extends past `b + lengthB`. The remaining characters shift to start at `b`:
+     `A' = DELETE(b, newLength)`
 
 ---
 
@@ -791,22 +775,49 @@ This decision is why transforming a DELETE against an INSERT may create a GROUP.
 
 ---
 
-# 21. Proposed Transformation of Groups
+# 21. Transformation of Groups and Composites
 
-A GROUP is treated as an ordered sequence of primitives representing one user action.
+A `GROUP` is treated as an ordered sequence of primitives $[P_1, P_2, \dots, P_k]$ representing one logical action executed sequentially.
 
-When transforming a group against another operation:
+### 21.1 Identity and NO_OP Rules
+- `transform(NO_OP, X) = NO_OP`
+- `transform(X, NO_OP) = X`
 
-1. transform each affected primitive while preserving group order,
-2. transform subsequent group positions relative to earlier transformed primitives,
-3. remove internal `NO_OP` primitives,
-4. collapse the entire group to `NO_OP` only if no effective primitive remains.
+### 21.2 Primitive vs GROUP
+When a primitive operation $P$ is transformed against a group $G = [P_1, P_2, \dots, P_k]$:
+$P$ is transformed sequentially against each primitive in $G$:
+```text
+P_0 = P
+P_i = transform(P_{i-1}, P_i)  for i = 1..k
+transform(P, G) = P_k
+```
 
-A dedicated implementation module must own this behavior.
+### 21.3 GROUP vs Primitive
+When a group $G = [P_1, P_2, \dots, P_k]$ is transformed against a primitive operation $P$:
+Each primitive in $G$ is transformed against the progressively evolving $P$:
+```text
+P_0 = P
+For i = 1..k:
+  P_i' = transform(P_i, P_{i-1})
+  P_i = transform(P_{i-1}, P_i)
+```
+Collect all non-`NO_OP` transformed primitives $P_i'$.
 
-Do not distribute transformation logic across controllers, WebSocket handlers, and UI components.
+### 21.4 GROUP vs GROUP
+When group $G_A = [P_{A,1}, \dots, P_{A,m}]$ transforms against group $G_B$:
+```text
+G_B_0 = G_B
+For j = 1..m:
+  P_{A,j}' = transform(P_{A,j}, G_B_{j-1})
+  G_B_j = transform(G_B_{j-1}, P_{A,j})
+```
+Collect all non-`NO_OP` transformed primitives $P_{A,j}'$.
 
-The steps above express intent but are not a complete algorithm for all primitive/group and group/group combinations. Exact position rebasing, tie-breaking between composite operations, validation order, and canonical test vectors remain an implementation blocker; see Section 38.
+### 21.5 Flattening Rules
+The resulting list of effective primitives is simplified:
+- 0 active primitives remaining: returns `NO_OP`.
+- 1 active primitive remaining: returns that single primitive $P'$.
+- 2 or more active primitives: returns `GROUP([P_1', P_2', ...])`.
 
 ---
 
@@ -854,52 +865,66 @@ result           ↓
 
 # 23. Client Processing Model
 
-The client maintains:
+The client maintains a 3-state collaboration state machine:
 
-```text
-confirmed document state
-confirmedRevision
-pending local operations
-visible optimistic state
-```
+1. **State 1: Synchronized** (`inFlightOperation == null`, `pendingBuffer.isEmpty()`)
+   - `confirmedState == optimisticState`
+   - `confirmedRevision == currentKnownRevision`
 
-The visible editor may include changes the server has not yet acknowledged.
+2. **State 2: Awaiting In-Flight** (`inFlightOperation != null`, `pendingBuffer.isEmpty()`)
+   - Exactly one operation $A$ was transmitted with `baseRevision = confirmedRevision`.
+   - Local edits have not yet occurred since transmitting $A$.
 
-This state description does not by itself define how the server interprets a later local operation whose position depends on an earlier unacknowledged local operation. The protocol must select a causal submission model before allowing multiple operations in flight; see Section 38.
+3. **State 3: Awaiting with Buffer** (`inFlightOperation != null`, `pendingBuffer = [B_1, ..., B_n]`)
+   - Operation $A$ remains in-flight over WebSocket.
+   - Additional local edits $B_1, \dots, B_n$ occurred while awaiting acknowledgement for $A$.
+   - Buffered edits are kept in a local sequential queue and are **NOT** sent over the wire until $A$ is acknowledged.
+   - Each buffered edit $B_i$ is expressed relative to the optimistic state containing $A$ and prior buffered edits $B_1 \dots B_{i-1}$.
+
+This single-in-flight design eliminates wire-level causality ambiguity, preserves clean base revisions, and prevents race conditions.
 
 ---
 
-# 24. Client Rebase
+# 24. Client Rebase and Acknowledgement
 
-Suppose:
+### 24.1 Remote Canonical Operation $R$ Arrives
+When a remote canonical operation $R$ arrives at `confirmedRevision + 1`:
 
-```text
-confirmedRevision = 20
-pending operation = L
-```
+1. If in State 1 (Synchronized):
+   - Apply $R$ to `confirmedState` and `optimisticState`.
+   - Advance `confirmedRevision = R.revision`.
 
-A remote canonical operation:
+2. If in State 2 (Awaiting In-Flight $A$):
+   - $R' = transform(R, A)$
+   - $A' = transform(A, R)$
+   - Apply $R$ to `confirmedState`.
+   - Apply $R'$ to `optimisticState`.
+   - Replace in-flight $A$ with $A'$.
+   - Advance `confirmedRevision = R.revision`.
 
-```text
-R at revision 21
-```
+3. If in State 3 (Awaiting with Buffer $A$ and $[B_1, \dots, B_n]$):
+   - $R_0 = transform(R, A)$
+   - $A' = transform(A, R)$
+   - For $i = 1 \dots n$:
+     - $R_i = transform(R_{i-1}, B_i)$
+     - $B_i' = transform(B_i, R_{i-1})$
+   - Apply $R$ to `confirmedState`.
+   - Apply $R_n$ to `optimisticState`.
+   - Replace in-flight $A$ with $A'$.
+   - Replace `pendingBuffer` with $[B_1', \dots, B_n']$.
+   - Advance `confirmedRevision = R.revision`.
 
-arrives.
-
-Conceptually:
-
-```text
-R' = transform(R, L)
-L' = transform(L, R)
-```
-
-The client:
-
-1. applies R' to the visible document,
-2. replaces pending L with L',
-3. advances confirmed revision to 21.
-
-With multiple local pending operations, transformation proceeds through the pending queue in order.
+### 24.2 Acknowledgement for In-Flight $A$ Arrives
+When `server.operation_ack` for $A$ is received:
+1. $A$ is confirmed; clear `inFlightOperation = null`.
+2. If `pendingBuffer` is non-empty:
+   - Dequeue the first buffered edit $B_1$ (or compose the entire pending buffer into one composite operation).
+   - Set $B_1$'s `baseRevision = confirmedRevision`.
+   - Set $B_1$ as the new `inFlightOperation`.
+   - Transmit $B_1$ via `client.operation`.
+   - Transition to State 2 (or State 3 if further buffered edits remain).
+3. If `pendingBuffer` is empty:
+   - Transition to State 1 (Synchronized).
 
 ---
 
@@ -1166,23 +1191,21 @@ Each risk has dedicated automated testing elsewhere in the architecture.
 
 ---
 
-# 38. Open Correctness Details
+# 38. Resolved Synchronization Details (OT-001)
 
-The following decisions are unresolved. They are not permission for an implementation to choose ad hoc behavior.
+The following synchronization details were frozen under **OT-001**:
 
-## 38.1 Multiple Pending Local Operations
+## 38.1 Multiple Pending Local Operations (Resolved)
 
-`baseRevision` identifies canonical server history but does not identify dependencies between local operations. If operation B is authored against visible text that already includes unacknowledged operation A, treating both as independent operations against the same `baseRevision` can transform B incorrectly.
+The protocol adopts the single in-flight operation model with a sequential local pending buffer (Section 23 and Section 24). At most one operation is in-flight over WebSocket at any given time. Additional local user edits are appended to a local buffer and rebased progressively against arriving remote canonical operations. When acknowledgement arrives, the next buffered operation (or composed buffer) is dispatched with `baseRevision = confirmedRevision`. Canonical multi-operation rebase test vectors are frozen in `docs/ot-test-vectors.json`.
 
-Before client/server OT integration, the protocol must choose and specify one causal model, such as a single in-flight operation plus a composed buffer, or explicit per-client predecessor/sequence metadata with corresponding server rules. The choice requires canonical multi-operation test vectors shared by Java and TypeScript.
+## 38.2 Composite `GROUP` Transformation (Resolved)
 
-## 38.2 Composite `GROUP` Transformation
+Complete deterministic transformation semantics for server-emitted `GROUP` composites against primitives and other `GROUP` composites are frozen in Section 21. Client-authored `GROUP` operations are deferred for protocol v1; clients decompose replacements and submit individual primitive operations. The server emits `GROUP` operations only when insert-wins splits a `DELETE` around a concurrent `INSERT`.
 
-Sections 9 and 21 do not completely define deterministic transformation of `GROUP` against every primitive and another `GROUP`. Because insert-wins `DELETE`-against-`INSERT` can generate a composite canonical result, the implementation must complete internal/server-emitted composite semantics unless a new ADR changes that accepted intent policy. A separate choice may enable client-authored `GROUP` or defer client-authored replacements to a causally defined primitive sequence.
+## 38.3 Unacknowledged Intent Across Epoch Change (HIST-001)
 
-## 38.3 Unacknowledged Intent Across Epoch Change
-
-An operation from an old epoch cannot be applied normally after version restore. The product nevertheless prohibits silent loss of local text. Before connected-client restore is implemented, the protocol and UX must decide how old-epoch unacknowledged intent is preserved for user recovery, and which portions, if any, can be safely translated into new-epoch operations.
+An operation from an old epoch cannot be applied normally after version restore (`EPOCH_MISMATCH`). As specified in `REALTIME_PROTOCOL.md` and deferred to roadmap task `HIST-001`, the client retains local unacknowledged text in memory, alerts the user to the timeline reset, and provides recovery UX to prevent data loss. Safe automatic rebase is prohibited across epoch boundaries.
 
 # 39. Decision Invariants
 

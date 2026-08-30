@@ -6,10 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 4 — Plain-text editor shell milestone complete
-- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete
+- Current phase: Phase 5 — OT core specification frozen
+- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen
 - Measured benchmarks: none
-- Next task: `OT-001` (Resolve OT protocol blockers)
+- Next task: `OT-002` (Implement primitive OT modules and shared vectors)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -290,7 +290,7 @@ Phase exit: the full app remains runnable and a user can load and edit document 
 
 ### OT-001: Resolve OT protocol blockers
 
-**Status:** Not Started  
+**Status:** Complete  
 **Depends on:** `EDIT-001`  
 **Parallel safe:** No
 
@@ -302,6 +302,8 @@ Decide and document:
 - canonical shared vector format and ordering rules for the chosen model.
 
 Update ADR-001, `REALTIME_PROTOCOL.md`, architecture, and tests. Human approval is required because this freezes synchronization semantics.
+
+Verification note (2026-08-30): Single in-flight + sequential local buffer client rebase model frozen. Server-emitted sequential GROUP composites and split DELETE math under insert-wins policy frozen. Client-authored GROUP explicitly deferred for v1. Canonical 23-vector JSON suite created and verified in `docs/ot-test-vectors.json`. ADR-001 Sections 6, 9, 18, 19, 21, 23, 24, 38 and `REALTIME_PROTOCOL.md` Sections 15–17, 27–31, 48 updated and approved. `./scripts/validate-docs.sh` verified.
 
 ### OT-002: Implement primitive OT modules and shared vectors
 
@@ -593,4 +595,4 @@ Phase exit: every stated improvement links to reproducible before/after evidence
 
 ## Next task
 
-`AUTH-001`, `AUTH-002`, and `AUTH-003` are complete and integrated. `DOC-001` (Freeze document API and schema limits) is the next task in sequence. Do not begin OT, WebSocket, Redis coordination, or AWS work prior to document API freezing.
+`OT-001` (Resolve OT protocol blockers) is Complete and synchronization contracts are frozen. `OT-002` (Implement primitive OT modules and shared vectors) is the next task in sequence. Do not begin persistence integration, WebSocket, or Redis coordination before OT-002 verification passes.

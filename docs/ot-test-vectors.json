@@ -1,0 +1,919 @@
+{
+  "version": 1,
+  "description": "Canonical Operational Transformation test vectors for Collaborative-Editor (OT-001 / OT-002)",
+  "indexing": "UTF-16 code units (0-indexed)",
+  "tieBreakerRule": "Lexicographical comparison of (clientId, clientOperationId) lowercase UUID strings. Lower key has precedence (placed first / stays left).",
+  "insertWinsRule": "Concurrent insertions survive deletions. DELETE vs INSERT inside range splits into a sequential GROUP of DELETEs.",
+  "vectors": [
+    {
+      "id": "vec-ins-ins-independent-left",
+      "description": "Two concurrent inserts at disjoint positions where opA is before opB",
+      "initialDocument": "abcdef",
+      "opA": {
+        "clientId": "00000000-0000-0000-0000-000000000001",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 2,
+          "text": "123"
+        }
+      },
+      "opB": {
+        "clientId": "00000000-0000-0000-0000-000000000002",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 4,
+          "text": "XYZ"
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "INSERT",
+        "position": 2,
+        "text": "123"
+      },
+      "expectedTransformedB": {
+        "kind": "INSERT",
+        "position": 7,
+        "text": "XYZ"
+      },
+      "expectedDocAfterAThenBPrime": "ab123cdXYZef",
+      "expectedDocAfterBThenAPrime": "ab123cdXYZef",
+      "expectedConvergedDocument": "ab123cdXYZef"
+    },
+    {
+      "id": "vec-ins-ins-independent-right",
+      "description": "Two concurrent inserts at disjoint positions where opA is after opB",
+      "initialDocument": "abcdef",
+      "opA": {
+        "clientId": "00000000-0000-0000-0000-000000000001",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 5,
+          "text": "999"
+        }
+      },
+      "opB": {
+        "clientId": "00000000-0000-0000-0000-000000000002",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 1,
+          "text": "AAA"
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "INSERT",
+        "position": 8,
+        "text": "999"
+      },
+      "expectedTransformedB": {
+        "kind": "INSERT",
+        "position": 1,
+        "text": "AAA"
+      },
+      "expectedDocAfterAThenBPrime": "aAAAbcde999f",
+      "expectedDocAfterBThenAPrime": "aAAAbcde999f",
+      "expectedConvergedDocument": "aAAAbcde999f"
+    },
+    {
+      "id": "vec-ins-ins-same-position-tie-a-wins",
+      "description": "Same position inserts where clientId A is lexicographically smaller than clientId B",
+      "initialDocument": "helloworld",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 5,
+          "text": "AAA"
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 5,
+          "text": "BBB"
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "INSERT",
+        "position": 5,
+        "text": "AAA"
+      },
+      "expectedTransformedB": {
+        "kind": "INSERT",
+        "position": 8,
+        "text": "BBB"
+      },
+      "expectedDocAfterAThenBPrime": "helloAAABBBworld",
+      "expectedDocAfterBThenAPrime": "helloAAABBBworld",
+      "expectedConvergedDocument": "helloAAABBBworld"
+    },
+    {
+      "id": "vec-ins-ins-same-position-tie-b-wins",
+      "description": "Same position inserts where clientId B is lexicographically smaller than clientId A",
+      "initialDocument": "helloworld",
+      "opA": {
+        "clientId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 5,
+          "text": "AAA"
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 5,
+          "text": "BBB"
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "INSERT",
+        "position": 8,
+        "text": "AAA"
+      },
+      "expectedTransformedB": {
+        "kind": "INSERT",
+        "position": 5,
+        "text": "BBB"
+      },
+      "expectedDocAfterAThenBPrime": "helloBBBAAAworld",
+      "expectedDocAfterBThenAPrime": "helloBBBAAAworld",
+      "expectedConvergedDocument": "helloBBBAAAworld"
+    },
+    {
+      "id": "vec-ins-ins-same-client-diff-op-id",
+      "description": "Same client ID and same position where clientOperationId breaks tie",
+      "initialDocument": "hello",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 0,
+          "text": "1"
+        }
+      },
+      "opB": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 0,
+          "text": "2"
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "INSERT",
+        "position": 0,
+        "text": "1"
+      },
+      "expectedTransformedB": {
+        "kind": "INSERT",
+        "position": 1,
+        "text": "2"
+      },
+      "expectedDocAfterAThenBPrime": "12hello",
+      "expectedDocAfterBThenAPrime": "12hello",
+      "expectedConvergedDocument": "12hello"
+    },
+    {
+      "id": "vec-ins-ins-unicode-surrogate-pair",
+      "description": "Inserts involving Unicode emoji surrogate pairs (2 UTF-16 code units)",
+      "initialDocument": "A🚀B",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 1,
+          "text": "✨"
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 3,
+          "text": "🎉"
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "INSERT",
+        "position": 1,
+        "text": "✨"
+      },
+      "expectedTransformedB": {
+        "kind": "INSERT",
+        "position": 4,
+        "text": "🎉"
+      },
+      "expectedDocAfterAThenBPrime": "A✨🚀🎉B",
+      "expectedDocAfterBThenAPrime": "A✨🚀🎉B",
+      "expectedConvergedDocument": "A✨🚀🎉B"
+    },
+    {
+      "id": "vec-del-del-independent-left",
+      "description": "Two disjoint deletes where opA is strictly before opB",
+      "initialDocument": "0123456789",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 1,
+          "length": 2
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 5,
+          "length": 2
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "DELETE",
+        "position": 1,
+        "length": 2
+      },
+      "expectedTransformedB": {
+        "kind": "DELETE",
+        "position": 3,
+        "length": 2
+      },
+      "expectedDocAfterAThenBPrime": "034789",
+      "expectedDocAfterBThenAPrime": "034789",
+      "expectedConvergedDocument": "034789"
+    },
+    {
+      "id": "vec-del-del-independent-right",
+      "description": "Two disjoint deletes where opA is strictly after opB",
+      "initialDocument": "0123456789",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 6,
+          "length": 3
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 1,
+          "length": 2
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "DELETE",
+        "position": 4,
+        "length": 3
+      },
+      "expectedTransformedB": {
+        "kind": "DELETE",
+        "position": 1,
+        "length": 2
+      },
+      "expectedDocAfterAThenBPrime": "03459",
+      "expectedDocAfterBThenAPrime": "03459",
+      "expectedConvergedDocument": "03459"
+    },
+    {
+      "id": "vec-del-del-adjacent",
+      "description": "Two touching/adjacent deletes that do not overlap",
+      "initialDocument": "0123456789",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 2,
+          "length": 3
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 5,
+          "length": 3
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "DELETE",
+        "position": 2,
+        "length": 3
+      },
+      "expectedTransformedB": {
+        "kind": "DELETE",
+        "position": 2,
+        "length": 3
+      },
+      "expectedDocAfterAThenBPrime": "0189",
+      "expectedDocAfterBThenAPrime": "0189",
+      "expectedConvergedDocument": "0189"
+    },
+    {
+      "id": "vec-del-del-identical",
+      "description": "Exact same deletion range in both operations yields NO_OP for both transformations",
+      "initialDocument": "0123456789",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 3,
+          "length": 4
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 3,
+          "length": 4
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "NO_OP"
+      },
+      "expectedTransformedB": {
+        "kind": "NO_OP"
+      },
+      "expectedDocAfterAThenBPrime": "012789",
+      "expectedDocAfterBThenAPrime": "012789",
+      "expectedConvergedDocument": "012789"
+    },
+    {
+      "id": "vec-del-del-partial-overlap-a-starts-first",
+      "description": "Partial overlap where opA starts before opB and ends inside opB",
+      "initialDocument": "0123456789",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 2,
+          "length": 4
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 4,
+          "length": 4
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "DELETE",
+        "position": 2,
+        "length": 2
+      },
+      "expectedTransformedB": {
+        "kind": "DELETE",
+        "position": 2,
+        "length": 2
+      },
+      "expectedDocAfterAThenBPrime": "0189",
+      "expectedDocAfterBThenAPrime": "0189",
+      "expectedConvergedDocument": "0189"
+    },
+    {
+      "id": "vec-del-del-partial-overlap-b-starts-first",
+      "description": "Partial overlap where opB starts before opA and ends inside opA",
+      "initialDocument": "0123456789",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 4,
+          "length": 4
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 2,
+          "length": 4
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "DELETE",
+        "position": 2,
+        "length": 2
+      },
+      "expectedTransformedB": {
+        "kind": "DELETE",
+        "position": 2,
+        "length": 2
+      },
+      "expectedDocAfterAThenBPrime": "0189",
+      "expectedDocAfterBThenAPrime": "0189",
+      "expectedConvergedDocument": "0189"
+    },
+    {
+      "id": "vec-del-del-containment-a-contains-b",
+      "description": "opA strictly contains opB range; opB becomes NO_OP, opA shrinks by opB length",
+      "initialDocument": "0123456789",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 2,
+          "length": 6
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 4,
+          "length": 2
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "DELETE",
+        "position": 2,
+        "length": 4
+      },
+      "expectedTransformedB": {
+        "kind": "NO_OP"
+      },
+      "expectedDocAfterAThenBPrime": "0189",
+      "expectedDocAfterBThenAPrime": "0189",
+      "expectedConvergedDocument": "0189"
+    },
+    {
+      "id": "vec-del-del-containment-b-contains-a",
+      "description": "opB strictly contains opA range; opA becomes NO_OP, opB shrinks by opA length",
+      "initialDocument": "0123456789",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 3,
+          "length": 3
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 1,
+          "length": 7
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "NO_OP"
+      },
+      "expectedTransformedB": {
+        "kind": "DELETE",
+        "position": 1,
+        "length": 4
+      },
+      "expectedDocAfterAThenBPrime": "089",
+      "expectedDocAfterBThenAPrime": "089",
+      "expectedConvergedDocument": "089"
+    },
+    {
+      "id": "vec-ins-del-insert-before-delete",
+      "description": "INSERT occurs strictly before DELETE range; DELETE shifts right",
+      "initialDocument": "abcdefghij",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 2,
+          "text": "123"
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 5,
+          "length": 3
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "INSERT",
+        "position": 2,
+        "text": "123"
+      },
+      "expectedTransformedB": {
+        "kind": "DELETE",
+        "position": 8,
+        "length": 3
+      },
+      "expectedDocAfterAThenBPrime": "ab123cdeij",
+      "expectedDocAfterBThenAPrime": "ab123cdeij",
+      "expectedConvergedDocument": "ab123cdeij"
+    },
+    {
+      "id": "vec-ins-del-insert-after-delete",
+      "description": "INSERT occurs strictly after DELETE range; INSERT shifts left",
+      "initialDocument": "abcdefghij",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 8,
+          "text": "XYZ"
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 2,
+          "length": 4
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "INSERT",
+        "position": 4,
+        "text": "XYZ"
+      },
+      "expectedTransformedB": {
+        "kind": "DELETE",
+        "position": 2,
+        "length": 4
+      },
+      "expectedDocAfterAThenBPrime": "abghXYZij",
+      "expectedDocAfterBThenAPrime": "abghXYZij",
+      "expectedConvergedDocument": "abghXYZij"
+    },
+    {
+      "id": "vec-ins-del-insert-at-delete-start",
+      "description": "INSERT occurs exactly at DELETE start; INSERT survives at start, DELETE shifts after inserted text",
+      "initialDocument": "abcdefgh",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 3,
+          "text": "HI"
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 3,
+          "length": 3
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "INSERT",
+        "position": 3,
+        "text": "HI"
+      },
+      "expectedTransformedB": {
+        "kind": "DELETE",
+        "position": 5,
+        "length": 3
+      },
+      "expectedDocAfterAThenBPrime": "abcHIgh",
+      "expectedDocAfterBThenAPrime": "abcHIgh",
+      "expectedConvergedDocument": "abcHIgh"
+    },
+    {
+      "id": "vec-ins-del-insert-at-delete-end",
+      "description": "INSERT occurs exactly at DELETE end; INSERT shifts left by deletion length, DELETE unaffected",
+      "initialDocument": "abcdefgh",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 6,
+          "text": "HI"
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 2,
+          "length": 4
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "INSERT",
+        "position": 2,
+        "text": "HI"
+      },
+      "expectedTransformedB": {
+        "kind": "DELETE",
+        "position": 2,
+        "length": 4
+      },
+      "expectedDocAfterAThenBPrime": "abHIgh",
+      "expectedDocAfterBThenAPrime": "abHIgh",
+      "expectedConvergedDocument": "abHIgh"
+    },
+    {
+      "id": "vec-ins-del-insert-inside-delete-split",
+      "description": "INSERT occurs strictly inside DELETE range. Under insert-wins, INSERT collapses to start, and DELETE splits into GROUP",
+      "initialDocument": "0123456789",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 5,
+          "text": "NEW"
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 2,
+          "length": 6
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "INSERT",
+        "position": 2,
+        "text": "NEW"
+      },
+      "expectedTransformedB": {
+        "kind": "GROUP",
+        "operations": [
+          {
+            "kind": "DELETE",
+            "position": 2,
+            "length": 3
+          },
+          {
+            "kind": "DELETE",
+            "position": 5,
+            "length": 3
+          }
+        ]
+      },
+      "expectedDocAfterAThenBPrime": "01NEW89",
+      "expectedDocAfterBThenAPrime": "01NEW89",
+      "expectedConvergedDocument": "01NEW89"
+    },
+    {
+      "id": "vec-del-ins-delete-before-insert",
+      "description": "DELETE occurs strictly before INSERT; INSERT shifts left",
+      "initialDocument": "0123456789",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 1,
+          "length": 3
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 6,
+          "text": "OK"
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "DELETE",
+        "position": 1,
+        "length": 3
+      },
+      "expectedTransformedB": {
+        "kind": "INSERT",
+        "position": 3,
+        "text": "OK"
+      },
+      "expectedDocAfterAThenBPrime": "045OK6789",
+      "expectedDocAfterBThenAPrime": "045OK6789",
+      "expectedConvergedDocument": "045OK6789"
+    },
+    {
+      "id": "vec-del-ins-delete-after-insert",
+      "description": "DELETE occurs strictly after INSERT; DELETE shifts right",
+      "initialDocument": "0123456789",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 5,
+          "length": 3
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 2,
+          "text": "OK"
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "DELETE",
+        "position": 7,
+        "length": 3
+      },
+      "expectedTransformedB": {
+        "kind": "INSERT",
+        "position": 2,
+        "text": "OK"
+      },
+      "expectedDocAfterAThenBPrime": "01OK23489",
+      "expectedDocAfterBThenAPrime": "01OK23489",
+      "expectedConvergedDocument": "01OK23489"
+    },
+    {
+      "id": "vec-group-primitive-transform",
+      "description": "A server-generated GROUP transformed against an INSERT",
+      "initialDocument": "0123456789",
+      "opA": {
+        "clientId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "GROUP",
+          "operations": [
+            {
+              "kind": "DELETE",
+              "position": 2,
+              "length": 2
+            },
+            {
+              "kind": "DELETE",
+              "position": 4,
+              "length": 2
+            }
+          ]
+        }
+      },
+      "opB": {
+        "clientId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 1,
+          "text": "Z"
+        }
+      },
+      "expectedTransformedA": {
+        "kind": "GROUP",
+        "operations": [
+          {
+            "kind": "DELETE",
+            "position": 3,
+            "length": 2
+          },
+          {
+            "kind": "DELETE",
+            "position": 5,
+            "length": 2
+          }
+        ]
+      },
+      "expectedTransformedB": {
+        "kind": "INSERT",
+        "position": 1,
+        "text": "Z"
+      },
+      "expectedDocAfterAThenBPrime": "0Z14589",
+      "expectedDocAfterBThenAPrime": "0Z14589",
+      "expectedConvergedDocument": "0Z14589"
+    },
+    {
+      "id": "vec-client-queue-rebase-three-step",
+      "description": "Multi-operation client pending buffer rebase against remote canonical operation",
+      "initialDocument": "ABCDEF",
+      "scenario": "Client has in-flight op1 (insert '1' at 1) and buffered op2 (insert '2' at 2 in optimistic doc 'A1BCDEF'). Remote opR (delete 'BC' at [1, 3)) arrives.",
+      "opR": {
+        "clientId": "rrrrrrrr-rrrr-rrrr-rrrr-rrrrrrrrrrrr",
+        "clientOperationId": "99999999-9999-9999-9999-999999999999",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "DELETE",
+          "position": 1,
+          "length": 2
+        }
+      },
+      "clientInFlight": {
+        "clientId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        "clientOperationId": "11111111-1111-1111-1111-111111111111",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 1,
+          "text": "1"
+        }
+      },
+      "clientBuffered": {
+        "clientId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        "clientOperationId": "22222222-2222-2222-2222-222222222222",
+        "baseRevision": 0,
+        "operation": {
+          "kind": "INSERT",
+          "position": 2,
+          "text": "2"
+        }
+      },
+      "expectedTransformedInFlight": {
+        "kind": "INSERT",
+        "position": 1,
+        "text": "1"
+      },
+      "expectedTransformedBuffered": {
+        "kind": "INSERT",
+        "position": 2,
+        "text": "2"
+      },
+      "expectedTransformedRForOptimistic": {
+        "kind": "DELETE",
+        "position": 3,
+        "length": 2
+      },
+      "expectedFinalOptimisticDoc": "A12DEF"
+    }
+  ]
+}
