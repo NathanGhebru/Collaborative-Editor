@@ -6,10 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 3 — Document specification complete
-- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen
+- Current phase: Phase 3 — Document backend complete
+- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete
 - Measured benchmarks: none
-- Next task: `DOC-002` (Implement document and sharing backend) / `DOC-003` (Implement document and sharing UI)
+- Next task: `DOC-003` (Implement document and sharing UI)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -219,11 +219,20 @@ Verification note (2026-08-29): Document summary/detail representations, CRUD en
 
 ### DOC-002: Implement document and sharing backend
 
-**Status:** Not Started  
+**Status:** Complete
+
 **Depends on:** `AUTH-002`, `DOC-001`  
 **Parallel safe:** Yes, with `DOC-003` after the API freezes.
 
-Implement create/list/open/rename/hard-delete, owner/editor authorization, grant/revoke access, revision-0 snapshots for empty and supplied initial text, migrations, and real PostgreSQL integration tests.
+Requirements:
+
+- implement create/list/open/rename/hard-delete, owner/editor authorization, grant/revoke access, revision-0 snapshots for empty and supplied initial text, migrations, and real PostgreSQL integration tests.
+
+Verification:
+
+- `./scripts/test-backend.sh` passes; backend unit tests and controller integration tests pass cleanly.
+
+Verification note (2026-08-29): Flyway schema migration `V2__init_document_schema.sql` created for `documents`, `document_snapshots`, and `document_permissions`. JPA entities, repositories, `DocumentService`, `DocumentController`, cursor pagination encoder/decoder, atomic revision-0 snapshot creation, and permission management implemented. Unit (`DocumentServiceTest`) and integration (`DocumentControllerTest`) suites pass. `./scripts/test-backend.sh` and `./scripts/validate-docs.sh` verified.
 
 ### DOC-003: Implement document and sharing UI
 
