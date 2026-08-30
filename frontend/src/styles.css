@@ -20,6 +20,12 @@ main {
   padding: 2rem;
 }
 
+.document-page {
+  align-content: start;
+  max-width: 56rem;
+  padding-top: 5rem;
+}
+
 h1,
 h2,
 p {
@@ -46,6 +52,52 @@ h1 {
   padding: 1.25rem;
 }
 
+.document-card,
+.danger-zone {
+  background: #19253a;
+  border: 1px solid #32445f;
+  border-radius: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+.danger-zone {
+  border-color: #be5968;
+}
+
+.app-navigation {
+  align-items: center;
+  background: #19253a;
+  border-bottom: 1px solid #32445f;
+  box-sizing: border-box;
+  display: flex;
+  gap: 1rem;
+  min-height: 3.5rem;
+  padding: 0.5rem max(1rem, calc((100vw - 56rem) / 2));
+  position: fixed;
+  top: 0;
+  width: 100%;
+  z-index: 1;
+}
+
+.app-navigation a {
+  color: #e9edf5;
+  font-weight: 800;
+  margin-right: auto;
+  text-decoration: none;
+}
+
+.app-navigation button,
+.back-link {
+  margin-top: 0;
+}
+
+.page-heading {
+  display: flex;
+  justify-content: space-between;
+}
+
 form {
   display: grid;
   gap: 0.5rem;
@@ -57,7 +109,8 @@ label {
 }
 
 input,
-button {
+button,
+textarea {
   border-radius: 0.4rem;
   font: inherit;
   padding: 0.7rem 0.8rem;
@@ -65,6 +118,12 @@ button {
 
 input {
   border: 1px solid #64748b;
+}
+
+textarea {
+  border: 1px solid #64748b;
+  min-height: 5rem;
+  resize: vertical;
 }
 
 button {
@@ -92,4 +151,62 @@ button:disabled {
 
 .auth-switch {
   margin-top: 0.5rem;
+}
+
+.document-list,
+.permissions-list {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.document-link {
+  align-items: start;
+  background: #19253a;
+  border: 1px solid #32445f;
+  color: #e9edf5;
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.document-link small,
+.muted,
+.empty-state {
+  color: #b6c2d9;
+}
+
+.permissions-list li {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.permissions-list button {
+  margin-top: 0;
+}
+
+.document-content {
+  background: #101827;
+  border-radius: 0.4rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 1rem;
+  white-space: pre-wrap;
+}
+
+.inline-error,
+.global-error {
+  color: #fda4af;
+}
+
+.inline-error {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
 }

@@ -35,6 +35,9 @@ test("registers through the documented API contract", async ({ page }) => {
       body: JSON.stringify({ user, accessToken: "access-token", expiresInSeconds: 900 }),
     });
   });
+  await page.route(/\/api\/v1\/documents\?limit=20$/, (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify({ documents: [], nextCursor: null }),
+  }));
 
   await page.goto("/#/register");
   await page.getByLabel("Username").fill(" Nathan_1 ");
@@ -43,7 +46,7 @@ test("registers through the documented API contract", async ({ page }) => {
   await page.getByLabel("Password").fill("password123");
   await page.getByRole("button", { name: "Create account" }).click();
 
-  await expect(page.getByRole("heading", { name: "Welcome, Nathan" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your workspace" })).toBeVisible();
 });
 
 test("rejects an unauthenticated protected route and presents a safe login error", async ({ page }) => {
@@ -83,9 +86,12 @@ test("restores a protected route from the refresh cookie and logs out", async ({
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(user) });
   });
   await page.route("**/api/v1/auth/logout", (route) => route.fulfill({ status: 204 }));
+  await page.route(/\/api\/v1\/documents\?limit=20$/, (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify({ documents: [], nextCursor: null }),
+  }));
 
   await page.goto("/#/app");
-  await expect(page.getByRole("heading", { name: "Welcome, Nathan" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your workspace" })).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
 
   await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();

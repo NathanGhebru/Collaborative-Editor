@@ -30,7 +30,8 @@ describe("authentication flows", () => {
   it("normalizes registration input and establishes an authenticated session", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response(401, { error: { code: "REFRESH_TOKEN_REVOKED", message: "No active session." } }))
-      .mockResolvedValueOnce(response(201, { user, accessToken: "access-token", expiresInSeconds: 900 }));
+      .mockResolvedValueOnce(response(201, { user, accessToken: "access-token", expiresInSeconds: 900 }))
+      .mockResolvedValueOnce(response(200, { documents: [], nextCursor: null }));
     vi.stubGlobal("fetch", fetchMock);
 
     render(<App />);
@@ -44,8 +45,9 @@ describe("authentication flows", () => {
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "password123" } });
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
 
-    expect(await screen.findByRole("heading", { name: "Welcome, Nathan" })).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenLastCalledWith(
+    expect(await screen.findByRole("heading", { name: "Your workspace" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
       "/api/v1/auth/register",
       expect.objectContaining({
         credentials: "include",
@@ -75,13 +77,14 @@ describe("authentication flows", () => {
     window.location.hash = "#/app";
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response(200, { accessToken: "refreshed-token", expiresInSeconds: 900 }))
-      .mockResolvedValueOnce(response(200, { ...user, email: "nathan@example.com" }));
+      .mockResolvedValueOnce(response(200, { ...user, email: "nathan@example.com" }))
+      .mockResolvedValueOnce(response(200, { documents: [], nextCursor: null }));
     vi.stubGlobal("fetch", fetchMock);
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Welcome, Nathan" })).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(await screen.findByRole("heading", { name: "Your workspace" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     const currentUserRequest = fetchMock.mock.calls[1][1] as RequestInit;
     expect(new Headers(currentUserRequest.headers).get("Authorization")).toBe("Bearer refreshed-token");
   });
@@ -91,12 +94,13 @@ describe("authentication flows", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response(200, { accessToken: "refreshed-token", expiresInSeconds: 900 }))
       .mockResolvedValueOnce(response(200, user))
+      .mockResolvedValueOnce(response(200, { documents: [], nextCursor: null }))
       .mockResolvedValueOnce(response(204));
     vi.stubGlobal("fetch", fetchMock);
 
     render(<App />);
 
-    await screen.findByRole("heading", { name: "Welcome, Nathan" });
+    await screen.findByRole("heading", { name: "Your workspace" });
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
 
     expect(await screen.findByRole("heading", { name: "Welcome back" })).toBeInTheDocument();

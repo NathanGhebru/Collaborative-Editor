@@ -227,7 +227,7 @@ Implement create/list/open/rename/hard-delete, owner/editor authorization, grant
 
 ### DOC-003: Implement document and sharing UI
 
-**Status:** Not Started  
+**Status:** Complete
 **Depends on:** `AUTH-003`, `DOC-001`  
 **Parallel safe:** Yes, with `DOC-002`.
 
