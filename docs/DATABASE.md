@@ -206,7 +206,6 @@ content             TEXT NOT NULL
 content_hash        VARCHAR(64) NOT NULL
 created_at          TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 
-CONSTRAINT uk_document_snapshots_doc_rev UNIQUE (document_id, revision)
 CONSTRAINT uk_document_snapshots_doc_epoch_rev UNIQUE (document_id, sync_epoch, revision)
 ```
 
@@ -216,7 +215,6 @@ Rules:
 
 Indexes:
 ```text
-idx_document_snapshots_doc_rev UNIQUE ON document_snapshots(document_id, revision)
 idx_document_snapshots_doc_epoch_rev UNIQUE ON document_snapshots(document_id, sync_epoch, revision)
 ```
 
