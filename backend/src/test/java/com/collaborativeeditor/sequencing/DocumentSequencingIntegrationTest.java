@@ -56,6 +56,9 @@ public class DocumentSequencingIntegrationTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private com.collaborativeeditor.domain.document.DocumentPermissionRepository permissionRepository;
+
     private User testUser;
     private Document testDoc;
     private UUID docId;
@@ -63,6 +66,7 @@ public class DocumentSequencingIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        permissionRepository.deleteAll();
         operationIdRepository.deleteAll();
         batchRepository.deleteAll();
         snapshotRepository.deleteAll();

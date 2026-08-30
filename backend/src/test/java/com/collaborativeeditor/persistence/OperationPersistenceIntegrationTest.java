@@ -60,6 +60,9 @@ public class OperationPersistenceIntegrationTest {
     private UserRepository userRepository;
 
     @Autowired
+    private com.collaborativeeditor.domain.document.DocumentPermissionRepository permissionRepository;
+
+    @Autowired
     private PlatformTransactionManager transactionManager;
 
     private User testUser;
@@ -69,6 +72,7 @@ public class OperationPersistenceIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        permissionRepository.deleteAll();
         operationIdRepository.deleteAll();
         batchRepository.deleteAll();
         snapshotRepository.deleteAll();
