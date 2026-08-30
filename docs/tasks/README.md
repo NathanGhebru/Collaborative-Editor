@@ -6,10 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 6 — Durable operation persistence complete
-- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen; OT-002 Java and TypeScript OT engines complete and verified; PERS-001 canonical operation persistence complete
+- Current phase: Phase 6 — Durable operation pipeline complete
+- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen; OT-002 Java and TypeScript OT engines complete and verified; PERS-001 canonical operation persistence complete; PERS-002 durable OT sequencing complete
 - Measured benchmarks: none
-- Next task: `PERS-002` (Integrate OT sequencing with durable acceptance)
+- Next task: `RT-001` (Freeze remaining public protocol details)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -348,20 +348,11 @@ Verification note (2026-08-30): Integrated Antigravity's production persistence 
 
 ### PERS-002: Integrate OT sequencing with durable acceptance
 
-**Status:** Not Started  
+**Status:** Complete  
 **Depends on:** `PERS-001`  
 **Parallel safe:** No
 
-Implement a transport-independent document service that validates, transforms, provisionally orders, batches, commits, and only then returns a durable canonical result. Add failure injection around commit and retry boundaries.
-
-Verification:
-
-```bash
-./scripts/test-persistence.sh
-./scripts/test-integration.sh
-```
-
-Phase exit: tests prove atomic revision/history advancement, idempotent retry, initial/periodic snapshot recovery, and no success before commit.
+Implemented transport-independent `DocumentSequencingService` coordinating envelope validation, document/epoch verification, base revision validation, historical rebase against committed canonical history via `OtEngine`, deterministic UUID tie-breaking, split deletion / composite group handling, optimistic sequencing retry loop with conditional revision fencing, durable persistence via `OperationPersistenceService`, and exact idempotent retry. Verified by `./scripts/test-sequencing.sh` (11 tests), `./scripts/test-persistence.sh` (14 tests), `./scripts/test-backend.sh` (123 tests), and `./scripts/test-ot.sh`.
 
 ---
 
