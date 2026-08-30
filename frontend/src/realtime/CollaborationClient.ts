@@ -474,7 +474,9 @@ export class CollaborationClient {
     }
 
     const operation = this.snapshot.inFlight.operation;
-    if (operation.kind === "NO_OP") {
+    const primitives = flattenOperation(operation);
+
+    if (primitives.length === 0) {
       const promoted = promoteBuffered(
         this.snapshot.pendingBuffer,
         this.snapshot.confirmedRevision,
@@ -483,25 +485,51 @@ export class CollaborationClient {
       this.flushPendingOperation();
       return;
     }
-    if (operation.kind === "GROUP") {
-      this.fail({
-        category: "protocol",
-        code: "UNSENDABLE_CLIENT_GROUP",
-        message: "A rebased local edit became a GROUP, which protocol v1 does not permit clients to send.",
-        fatal: true,
-        reconnectable: false,
-        requiresAuthentication: false,
-        requiresResync: true,
-      });
+
+    if (primitives.length === 1) {
+      const inFlight: PendingClientOperation = {
+        ...this.snapshot.inFlight,
+        operation: primitives[0],
+        baseRevision: this.snapshot.confirmedRevision,
+        sent: true,
+      };
+      this.update({ inFlight });
+      this.sendMessage(createClientOperation({
+        messageId: this.createUuid(),
+        documentId: this.snapshot.documentId,
+        syncEpoch: this.snapshot.syncEpoch,
+        clientId: this.snapshot.clientId,
+        timestamp: this.now(),
+        clientOperationId: inFlight.clientOperationId,
+        baseRevision: inFlight.baseRevision,
+        operation: primitives[0],
+      }));
       return;
     }
 
+    // Multiple primitive operations resulting from local GROUP decomposition:
+    // First primitive retains inFlight identity; remaining primitives are prepended to pendingBuffer.
+    const firstOp = primitives[0];
+    const remainingOps: PendingClientOperation[] = primitives.slice(1).map((op) => ({
+      clientId: this.snapshot.clientId,
+      clientOperationId: this.createUuid(),
+      baseRevision: this.snapshot.confirmedRevision,
+      operation: op,
+      sent: false,
+    }));
+
     const inFlight: PendingClientOperation = {
       ...this.snapshot.inFlight,
+      operation: firstOp,
       baseRevision: this.snapshot.confirmedRevision,
       sent: true,
     };
-    this.update({ inFlight });
+
+    this.update({
+      inFlight,
+      pendingBuffer: [...remainingOps, ...this.snapshot.pendingBuffer],
+    });
+
     this.sendMessage(createClientOperation({
       messageId: this.createUuid(),
       documentId: this.snapshot.documentId,
@@ -510,7 +538,7 @@ export class CollaborationClient {
       timestamp: this.now(),
       clientOperationId: inFlight.clientOperationId,
       baseRevision: inFlight.baseRevision,
-      operation,
+      operation: firstOp,
     }));
   }
 
@@ -628,11 +656,28 @@ function promoteBuffered(
   if (pendingBuffer.length === 0) {
     return { inFlight: null, pendingBuffer: [] };
   }
-  const [next, ...remaining] = pendingBuffer;
+  const [head, ...rest] = pendingBuffer;
   return {
-    inFlight: { ...next, baseRevision: confirmedRevision, sent: false },
-    pendingBuffer: remaining,
+    inFlight: {
+      ...head,
+      baseRevision: confirmedRevision,
+      sent: false,
+    },
+    pendingBuffer: rest,
   };
+}
+
+function flattenOperation(operation: TextOperation): PrimitiveOperation[] {
+  if (operation.kind === "NO_OP") {
+    return [];
+  }
+  if (operation.kind === "INSERT" || operation.kind === "DELETE") {
+    return [operation];
+  }
+  if (operation.kind === "GROUP") {
+    return operation.operations.flatMap(flattenOperation);
+  }
+  return [];
 }
 
 function errorMessage(error: unknown, fallback: string): string {

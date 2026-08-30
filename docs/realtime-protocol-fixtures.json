@@ -72,7 +72,7 @@
       "clientId": "7a719fbf-87ce-408d-beac-c665df880eaf",
       "timestamp": "2026-08-30T12:15:01.020Z",
       "payload": {
-        "clientOperationId": "b32bdee5-3359-496e-bd48-6dccged24ddc",
+        "clientOperationId": "b32bdee5-3359-496e-bd48-6dcc9ed24ddc",
         "baseRevision": 925,
         "operation": {
           "kind": "DELETE",
@@ -116,7 +116,7 @@
           {
             "revision": 926,
             "clientId": "7a719fbf-87ce-408d-beac-c665df880eaf",
-            "clientOperationId": "b32bdee5-3359-496e-bd48-6dccged24ddc",
+            "clientOperationId": "b32bdee5-3359-496e-bd48-6dcc9ed24ddc",
             "actorUserId": "9cd819ab-20de-4356-8870-69757480c0d1",
             "operation": {
               "kind": "GROUP",
@@ -149,7 +149,7 @@
           {
             "revision": 927,
             "clientId": "7a719fbf-87ce-408d-beac-c665df880eaf",
-            "clientOperationId": "c43ceef6-4460-507f-ce59-7eddhed35eed",
+            "clientOperationId": "c43ceef6-4460-507f-ce59-7edd9ed35eed",
             "actorUserId": "9cd819ab-20de-4356-8870-69757480c0d1",
             "operation": {
               "kind": "NO_OP"

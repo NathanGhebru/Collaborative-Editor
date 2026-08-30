@@ -376,7 +376,6 @@ Document edits use:
 
 ```text
 client.operation
-server.operation_ack
 server.operations
 server.operation_rejected
 ```

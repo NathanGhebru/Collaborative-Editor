@@ -413,6 +413,38 @@ describe("RT-002 collaboration state machine", () => {
 
   });
 
+  it("decomposes rebased local GROUP into sequential primitive operations", async () => {
+    const { client, transport } = await activeClient("hello world", { uuids: ["op-split-2"] });
+    // First edit becomes inFlight
+    client.submitLocalOperation({ kind: "INSERT", position: 0, text: "A" });
+    // Second edit goes into pendingBuffer (unsent)
+    client.submitLocalOperation({ kind: "DELETE", position: 2, length: 7 }); // "llo wor"
+
+    // Remote insert arrives, rebasing both inFlight and pendingBuffer
+    transport.receive(operations({
+      revision: 1,
+      clientId: "remote-client",
+      clientOperationId: "op-remote-1",
+      operation: { kind: "INSERT", position: 5, text: "X" },
+    }));
+
+    // Server acknowledges first in-flight edit "A"
+    transport.receive(operations({
+      revision: 2,
+      clientId: LOCAL_CLIENT,
+      clientOperationId: sentMessages(transport).filter((m) => m.type === "client.operation")[0].payload.clientOperationId as string,
+      operation: { kind: "INSERT", position: 0, text: "A" },
+    }));
+
+    // Now buffered delete (which became GROUP([DELETE(3, 3), DELETE(7, 4)])) is promoted and decomposed!
+    const ops = sentMessages(transport).filter((m) => m.type === "client.operation");
+    expect(ops.length).toBe(2);
+    expect(ops[1].payload).toEqual(expect.objectContaining({
+      baseRevision: 2,
+      operation: { kind: "DELETE", position: 2, length: 4 },
+    }));
+  });
+
   it("rejects malformed server messages and closes with BAD_REQUEST", async () => {
     const { client, transport } = await activeClient("abc");
     transport.receive("not-json");

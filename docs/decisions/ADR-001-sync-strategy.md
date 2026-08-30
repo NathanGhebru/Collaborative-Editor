@@ -915,7 +915,7 @@ When a remote canonical operation $R$ arrives at `confirmedRevision + 1`:
    - Advance `confirmedRevision = R.revision`.
 
 ### 24.2 Acknowledgement for In-Flight $A$ Arrives
-When `server.operation_ack` for $A$ is received:
+When canonical operation for $A$ (`server.operations` item matching `localClientId` and `inFlight.clientOperationId`) is received:
 1. $A$ is confirmed; clear `inFlightOperation = null`.
 2. If `pendingBuffer` is non-empty:
    - Dequeue the first buffered edit $B_1$ (or compose the entire pending buffer into one composite operation).

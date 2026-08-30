@@ -380,7 +380,7 @@ Verification note (2026-08-30): Frozen public real-time collaboration protocol v
 
 ### RT-002: Implement tickets and WebSocket collaboration
 
-**Status:** In Progress (Server portion complete)  
+**Status:** Complete  
 **Depends on:** `AUTH-002`, `PERS-002`, `RT-001`  
 **Parallel safe:** Server and client work may proceed in parallel after the protocol freezes.
 
@@ -392,7 +392,7 @@ Verification:
 ./scripts/test-realtime.sh
 ```
 
-Verification note (2026-08-30): Implemented and verified the complete Java / backend server portion of RT-002 (`antigravity/rt-002-server`). Verified REST ticket endpoint (`POST /api/v1/documents/{documentId}/realtime-ticket`, 60s TTL, single-use consumption, 404 concealment for unauthorized users), WebSocket handshake authorization via query parameter (`?ticket=...`), `client.hello` bootstrap and session binding with duplicate-connection replacement (`4004 SESSION_SUPERSEDED`), contiguous catch-up operation delivery, `server.ready` acknowledgment, operation submission through `DocumentSequencingService` (PERS-002), single-stream canonical broadcast (`server.operations`) to all room subscribers (both remote peers and author), UTF-8 JSON text framing (64 KB max frame limit), and comprehensive error and close code mapping (4000 BAD_REQUEST, 4001 UNAUTHORIZED, 4002 UNSUPPORTED_PROTOCOL_VERSION, 4003 DOCUMENT_DELETED, 4004 SESSION_SUPERSEDED, 1003 UNSUPPORTED_DATA for binary frames, 1009 PAYLOAD_TOO_LARGE, `server.operation_rejected`, and `server.resync_required`). All 6 realtime test suites (`RealtimeTicketControllerTest`, `RealtimeWebSocketHandshakeTest`, `RealtimeSessionLifecycleTest`, `RealtimeOperationBroadcastTest`, `RealtimeErrorHandlingTest`, `RealtimeIntegrationTest`), all 23 sequencing tests, all 14 persistence tests, all 49 Java OT tests, and all 144 backend tests pass cleanly.
+Verification note (2026-08-30): Fully integrated and verified RT-002 backend server and frontend client implementations (`antigravity/rt-002-integration`). Implemented REST ticket endpoint (`POST /api/v1/documents/{documentId}/realtime-ticket`, 60s TTL, single-use consumption, 404 concealment for unauthorized users), WebSocket handshake authorization via query parameter (`?ticket=...`), `client.hello` bootstrap and session binding with duplicate-connection replacement (`4004 SESSION_SUPERSEDED`), contiguous catch-up operation delivery, `server.ready` acknowledgment, operation submission through `DocumentSequencingService` (PERS-002), single-stream canonical broadcast (`server.operations`) to all room subscribers (both remote peers and author), UTF-8 JSON text framing (64 KB max frame limit), comprehensive error and close code mapping (4000 BAD_REQUEST, 4001 UNAUTHORIZED, 4002 UNSUPPORTED_PROTOCOL_VERSION, 4003 DOCUMENT_DELETED, 4004 SESSION_SUPERSEDED, 1003 UNSUPPORTED_DATA for binary frames, 1009 PAYLOAD_TOO_LARGE, `server.operation_rejected`, and `server.resync_required`), frontend `CollaborationClient` state machine, tab `clientId` persistence, local `NO_OP` dropping, local `GROUP` decomposition into primitive sequential operations, and real two-browser Playwright collaboration E2E integration test. Verified via `test-realtime.sh`, 6 Java realtime test suites (23/23 PASS), 144/144 backend tests PASS, 98/98 frontend Vitest tests PASS, Playwright E2E real two-client collaboration test PASS, `validate-docs.sh` PASS, and JSON fixture validation PASS.
 
 ### RT-003: Implement same-epoch reconnect and recovery tests
 
