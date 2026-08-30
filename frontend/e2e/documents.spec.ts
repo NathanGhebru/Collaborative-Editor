@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockRealtimeReady } from "./realtimeMock";
 
 const user = { id: "user-1", username: "nathan", displayName: "Nathan", createdAt: "2026-08-28T07:00:00Z" };
 const owner = user;
@@ -45,6 +46,7 @@ test("lists documents, renders the empty state, and follows a cursor", async ({ 
 
 test("creates, opens, renames, shares, revokes, and deletes an owner document", async ({ page }) => {
   await mockAuthenticated(page);
+  await mockRealtimeReady(page);
   let permissions = [] as Array<{ user: typeof collaborator; role: string; createdAt: string }>;
   const detail = { ...summary, content: "Initial text" };
 
@@ -107,6 +109,7 @@ test("creates, opens, renames, shares, revokes, and deletes an owner document", 
 
 test("shows editor and denied-document behavior", async ({ page }) => {
   await mockAuthenticated(page);
+  await mockRealtimeReady(page);
   const editorDetail = { ...summary, id: "document-2", title: "Shared notes", permission: "EDITOR", content: "Shared snapshot" };
   await page.route("**/api/v1/documents/document-2", (route) => route.fulfill({
     contentType: "application/json", body: JSON.stringify(editorDetail),

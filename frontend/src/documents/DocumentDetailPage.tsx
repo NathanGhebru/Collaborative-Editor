@@ -3,7 +3,8 @@ import { ApiError } from "../auth/api";
 import { useAuth } from "../auth/AuthProvider";
 import { documentApi } from "./api";
 import type { DocumentDetail, DocumentPermissionEntry } from "./types";
-import { PlainTextEditor } from "../editor/PlainTextEditor";
+import { CollaborativeEditor } from "../realtime/CollaborativeEditor";
+import { useDocumentCollaboration } from "../realtime/useDocumentCollaboration";
 
 function messageFor(error: unknown): string {
   if (error instanceof ApiError) {
@@ -14,6 +15,17 @@ function messageFor(error: unknown): string {
 
 function returnToDocuments() {
   window.location.hash = "#/documents";
+}
+
+function RealtimeDocumentEditor({
+  document,
+  accessToken,
+}: {
+  document: DocumentDetail;
+  accessToken: string;
+}) {
+  const collaboration = useDocumentCollaboration(document, accessToken);
+  return <CollaborativeEditor client={collaboration} />;
 }
 
 export function DocumentDetailPage({ documentId }: { documentId: string }) {
@@ -183,10 +195,7 @@ export function DocumentDetailPage({ documentId }: { documentId: string }) {
 
       <section className="document-card" aria-labelledby="document-content-heading">
         <h2 id="document-content-heading">Document Editor</h2>
-        <PlainTextEditor
-          initialContent={document.content}
-          readOnly={false}
-        />
+        <RealtimeDocumentEditor document={document} accessToken={accessToken!} />
       </section>
 
       {isOwner && (

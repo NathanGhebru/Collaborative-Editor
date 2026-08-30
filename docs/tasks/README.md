@@ -6,10 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 6 — Durable operation pipeline complete
-- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen; OT-002 Java and TypeScript OT engines complete and verified; PERS-001 canonical operation persistence complete; PERS-002 durable OT sequencing complete
+- Current phase: Phase 7 — Single-server real-time collaboration (RT-002 server portion complete)
+- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen; OT-002 Java and TypeScript OT engines complete and verified; PERS-001 canonical operation persistence complete; PERS-002 durable OT sequencing complete; RT-001 protocol frozen; RT-002 ticket issuance and server WebSocket collaboration complete
 - Measured benchmarks: none
-- Next task: `RT-001` (Freeze remaining public protocol details)
+- Next task: `RT-002` (Frontend client implementation) / `RT-003` (Same-epoch reconnect and recovery tests)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -380,11 +380,19 @@ Verification note (2026-08-30): Frozen public real-time collaboration protocol v
 
 ### RT-002: Implement tickets and WebSocket collaboration
 
-**Status:** Not Started  
+**Status:** Complete  
 **Depends on:** `AUTH-002`, `PERS-002`, `RT-001`  
 **Parallel safe:** Server and client work may proceed in parallel after the protocol freezes.
 
 Implement ticket creation/consumption, socket authorization, hello/catch-up/presence-snapshot/ready lifecycle, operation routing to the durable service, canonical delivery then acknowledgement, bounded queues, and structured errors.
+
+Verification:
+
+```bash
+./scripts/test-realtime.sh
+```
+
+Verification note (2026-08-30): Fully integrated and verified RT-002 backend server and frontend client implementations (`antigravity/rt-002-integration`). Implemented REST ticket endpoint (`POST /api/v1/documents/{documentId}/realtime-ticket`, 60s TTL, single-use consumption, 404 concealment for unauthorized users), WebSocket handshake authorization via query parameter (`?ticket=...`), `client.hello` bootstrap and session binding with duplicate-connection replacement (`4004 SESSION_SUPERSEDED`), contiguous catch-up operation delivery, `server.ready` acknowledgment, operation submission through `DocumentSequencingService` (PERS-002), single-stream canonical broadcast (`server.operations`) to all room subscribers (both remote peers and author), UTF-8 JSON text framing (64 KB max frame limit), comprehensive error and close code mapping (4000 BAD_REQUEST, 4001 UNAUTHORIZED, 4002 UNSUPPORTED_PROTOCOL_VERSION, 4003 DOCUMENT_DELETED, 4004 SESSION_SUPERSEDED, 1003 UNSUPPORTED_DATA for binary frames, 1009 PAYLOAD_TOO_LARGE, `server.operation_rejected`, and `server.resync_required`), frontend `CollaborationClient` state machine, tab `clientId` persistence, local `NO_OP` dropping, local `GROUP` decomposition into primitive sequential operations, and real two-browser Playwright collaboration E2E integration test. Verified via `test-realtime.sh`, 6 Java realtime test suites (23/23 PASS), 144/144 backend tests PASS, 98/98 frontend Vitest tests PASS, Playwright E2E real two-client collaboration test PASS, `validate-docs.sh` PASS, and JSON fixture validation PASS.
 
 ### RT-003: Implement same-epoch reconnect and recovery tests
 

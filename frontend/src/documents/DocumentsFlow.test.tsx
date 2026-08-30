@@ -1,6 +1,17 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
+import { ReadyRealtimeWebSocket } from "../testSupport/ReadyRealtimeWebSocket";
+
+vi.mock("../realtime/ticketApi", () => ({
+  realtimeTicketApi: () => ({
+    create: vi.fn(async (documentId: string) => ({
+      ticket: "rt_documents_flow",
+      expiresAt: "2026-08-30T12:16:00Z",
+      websocketPath: `/ws/v1/documents/${documentId}`,
+    })),
+  }),
+}));
 
 const user = { id: "user-1", username: "nathan", displayName: "Nathan", createdAt: "2026-08-28T07:00:00Z" };
 const owner = user;
@@ -30,6 +41,7 @@ function authenticated(fetchMock: ReturnType<typeof vi.fn>) {
 describe("document management flows", () => {
   beforeEach(() => {
     window.location.hash = "#/documents";
+    vi.stubGlobal("WebSocket", ReadyRealtimeWebSocket);
   });
 
   afterEach(() => {

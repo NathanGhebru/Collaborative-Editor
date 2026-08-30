@@ -1077,7 +1077,7 @@ The OT core synchronization blockers were resolved under **OT-001**:
 The public real-time protocol blockers are resolved under **RT-001**:
 3. **WebSocket Ticket & Auth Flow:** Frozen to REST ticket acquisition (`POST /api/v1/documents/{documentId}/realtime-ticket`), 60s TTL, single-use Redis deletion (`GETDEL`), and ticket query parameter `?ticket=<ticket>` (Section 2; ADR-002 Section 9–10).
 4. **Numeric WebSocket Close Codes & Reconnect Categories:** Frozen to application range 4000–4009 with explicit non-retryable vs re-authenticate classifications (Section 25.2).
-5. **Exact Message Envelopes & Dual-Ack Delivery:** Frozen to `client.operation` $\rightarrow$ `server.operations` broadcast to all subscribers + `server.operation_ack` to origin client socket (Sections 11, 14, 22).
+5. **Exact Message Envelopes & Single-Stream Delivery:** Frozen to `client.operation` $\rightarrow$ `server.operations` broadcast to all subscribers, serving as both remote broadcast and origin client acknowledgement (Sections 11, 14, 22).
 6. **Configurable Frame & Size Limits:** Frozen to 64 KB max frame size, 10,000 UTF-16 code units max insert, and 1,000,000 UTF-16 code units max document size (Section 45).
 7. **Machine-Readable Fixtures:** Frozen in `docs/realtime-protocol-fixtures.json`.
 

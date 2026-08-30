@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockRealtimeReady } from "./realtimeMock";
 
 const user = {
   id: "user-1",
@@ -62,6 +63,7 @@ test.describe("Local Plain-Text Editor Experience (EDIT-001)", () => {
     page,
   }) => {
     await mockAuthenticated(page);
+    await mockRealtimeReady(page);
     await page.route("**/api/v1/documents/document-1", (route) =>
       route.fulfill({
         contentType: "application/json",
@@ -86,7 +88,7 @@ test.describe("Local Plain-Text Editor Experience (EDIT-001)", () => {
 
     // Perform local edits
     await editor.fill("Initial document snapshot\nLine 2: Local editing active!");
-    await expect(page.getByRole("status")).toHaveText("Unsaved local changes");
+    await expect(page.getByRole("status")).toHaveText(/Saving/);
 
     // Verify captured operation log output
     await expect(page.getByText("Local operations captured:")).toBeVisible();
@@ -115,6 +117,7 @@ test.describe("Local Plain-Text Editor Experience (EDIT-001)", () => {
 
   test("loads multiline Unicode text and supports keyboard editing with UTF-16 selection offsets", async ({ page }) => {
     await mockAuthenticated(page);
+    await mockRealtimeReady(page);
     const unexpectedBodyWrites: string[] = [];
     await page.route("**/api/v1/documents/document-1", async (route) => {
       if (route.request().method() !== "GET") {
@@ -157,6 +160,7 @@ test.describe("Local Plain-Text Editor Experience (EDIT-001)", () => {
 
   test("supports an empty editor and preserves editor-role metadata boundaries and navigation", async ({ page }) => {
     await mockAuthenticated(page);
+    await mockRealtimeReady(page);
     const sharedDocument = {
       ...ownerDocument,
       id: "document-2",

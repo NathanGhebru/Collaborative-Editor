@@ -151,4 +151,85 @@ test.describe("Real-stack document and sharing E2E integration", () => {
     await expect(page.getByRole("heading", { name: "Your workspace" })).toBeVisible();
     await expect(page.getByText("No documents yet. Create your first document to get started.")).toBeVisible();
   });
+
+  test("executes real-time two-browser concurrent collaboration over WebSockets and converges", async ({ browser }) => {
+    const timestamp = Date.now();
+    const ownerUser = `collab_owner_${timestamp}`;
+    const ownerEmail = `collab_owner_${timestamp}@example.com`;
+    const editorUser = `collab_editor_${timestamp}`;
+    const editorEmail = `collab_editor_${timestamp}@example.com`;
+    const password = "Password123!";
+
+    // Create two separate browser contexts for two distinct users/tabs
+    const contextOwner = await browser.newContext();
+    const contextEditor = await browser.newContext();
+    const pageOwner = await contextOwner.newPage();
+    const pageEditor = await contextEditor.newPage();
+
+    // 1. Owner registration & document creation
+    await pageOwner.goto("/#/register");
+    await pageOwner.getByLabel("Username").fill(ownerUser);
+    await pageOwner.getByLabel("Email").fill(ownerEmail);
+    await pageOwner.getByLabel("Display name").fill("Collab Owner");
+    await pageOwner.getByLabel("Password").fill(password);
+    await pageOwner.getByRole("button", { name: "Create account" }).click();
+    await expect(pageOwner.getByRole("heading", { name: "Your workspace" })).toBeVisible({ timeout: 10000 });
+
+    await pageOwner.getByLabel("Title").fill("Realtime Shared Doc");
+    await pageOwner.getByLabel("Initial text (optional)").fill("Hello");
+    await pageOwner.getByRole("button", { name: "Create document" }).click();
+    await expect(pageOwner.getByRole("heading", { name: "Realtime Shared Doc" })).toBeVisible();
+
+    const documentUrl = pageOwner.url();
+
+    // 2. Editor registration
+    await pageEditor.goto("/#/register");
+    await pageEditor.getByLabel("Username").fill(editorUser);
+    await pageEditor.getByLabel("Email").fill(editorEmail);
+    await pageEditor.getByLabel("Display name").fill("Collab Editor");
+    await pageEditor.getByLabel("Password").fill(password);
+    await pageEditor.getByRole("button", { name: "Create account" }).click();
+    await expect(pageEditor.getByRole("heading", { name: "Your workspace" })).toBeVisible({ timeout: 10000 });
+
+    // 3. Owner grants editor access
+    await pageOwner.getByLabel("Username or email").fill(editorEmail);
+    await pageOwner.getByRole("button", { name: "Grant editor access" }).click();
+    await expect(pageOwner.getByText(`Collab Editor (@${editorUser}) — Editor`)).toBeVisible();
+
+    // 4. Editor opens shared document URL
+    await pageEditor.goto(documentUrl);
+    await expect(pageEditor.getByRole("heading", { name: "Realtime Shared Doc" })).toBeVisible();
+
+    const editorOwner = pageOwner.getByLabel("Document text editor");
+    const editorCollab = pageEditor.getByLabel("Document text editor");
+
+    await expect(editorOwner).toHaveValue("Hello");
+    await expect(editorCollab).toHaveValue("Hello");
+
+    // 5. Concurrent edits: Owner appends " World"
+    await editorOwner.focus();
+    await editorOwner.press("End");
+    await editorOwner.pressSequentially(" World");
+
+    // 6. Verify Editor receives real-time update over WebSocket
+    await expect.poll(async () => editorCollab.inputValue()).toBe("Hello World");
+
+    // 7. Editor appends "!"
+    await editorCollab.focus();
+    await editorCollab.press("End");
+    await editorCollab.pressSequentially("!");
+
+    // 8. Verify Owner receives real-time update over WebSocket
+    await expect.poll(async () => editorOwner.inputValue()).toBe("Hello World!");
+
+    // 9. Reload both pages and verify persistence recovery from PostgreSQL matches
+    await pageOwner.reload();
+    await pageEditor.reload();
+
+    await expect(pageOwner.getByLabel("Document text editor")).toHaveValue("Hello World!");
+    await expect(pageEditor.getByLabel("Document text editor")).toHaveValue("Hello World!");
+
+    await contextOwner.close();
+    await contextEditor.close();
+  });
 });
