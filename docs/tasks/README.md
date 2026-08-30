@@ -335,7 +335,16 @@ Phase exit: both languages pass the same vectors and convergence simulations wit
 **Depends on:** `DOC-001`, `OT-002`  
 **Parallel safe:** No
 
-Implemented operation batches (`document_operation_batches`), operation-identity rows (`document_operation_ids`), conditional revision fencing (`StaleRevisionFencingException`), snapshot-plus-log recovery (`OperationPersistenceService`), and gap detection (`RevisionGapException`) adhering to ADR-003 and `DATABASE.md`. Verified by `./scripts/test-persistence.sh` and full suite.
+Implement operation batches (`document_operation_batches`), operation-identity rows (`document_operation_ids`), conditional revision fencing (`StaleRevisionFencingException`), snapshot-plus-log recovery (`OperationPersistenceService`), and gap detection (`RevisionGapException`) adhering to ADR-003 and `DATABASE.md`.
+
+Verification:
+
+```bash
+./scripts/test-persistence.sh
+./scripts/test-backend.sh
+```
+
+Verification note (2026-08-30): Integrated Antigravity's production persistence implementation (`antigravity/pers-001`) with Codex's independent PostgreSQL 17 Testcontainers acceptance suite (`codex/pers-001-tests`). Verified atomic batch commits, conditional revision fencing, durable operation identity lookup/idempotency, JSONB operation serialization (INSERT, DELETE, NO_OP, GROUP, UTF-16 emojis), snapshot-plus-log document recovery, and ON DELETE CASCADE hard deletion. All 14 production persistence tests, all 10 PostgreSQL Testcontainers acceptance tests, all 112 backend tests, all 42 frontend OT tests, and 71 total frontend tests pass cleanly. Extended `./scripts/test-persistence.sh` to support `--fast`, `--postgres`, and combined execution.
 
 ### PERS-002: Integrate OT sequencing with durable acceptance
 
