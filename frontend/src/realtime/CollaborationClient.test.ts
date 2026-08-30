@@ -432,7 +432,9 @@ describe("RT-002 collaboration state machine", () => {
     transport.receive(operations({
       revision: 2,
       clientId: LOCAL_CLIENT,
-      clientOperationId: sentMessages(transport).filter((m) => m.type === "client.operation")[0].payload.clientOperationId as string,
+      clientOperationId: (sentMessages(transport)
+        .filter((message) => message.type === "client.operation")[0].payload as Record<string, unknown>)
+        .clientOperationId as string,
       operation: { kind: "INSERT", position: 0, text: "A" },
     }));
 
