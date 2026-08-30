@@ -3,6 +3,7 @@ import { ApiError } from "../auth/api";
 import { useAuth } from "../auth/AuthProvider";
 import { documentApi } from "./api";
 import type { DocumentDetail, DocumentPermissionEntry } from "./types";
+import { PlainTextEditor } from "../editor/PlainTextEditor";
 
 function messageFor(error: unknown): string {
   if (error instanceof ApiError) {
@@ -181,9 +182,11 @@ export function DocumentDetailPage({ documentId }: { documentId: string }) {
       </section>
 
       <section className="document-card" aria-labelledby="document-content-heading">
-        <h2 id="document-content-heading">Current document text</h2>
-        <pre className="document-content">{document.content || "This document is empty."}</pre>
-        <p className="muted">Live text editing is introduced in the next editor phase.</p>
+        <h2 id="document-content-heading">Document Editor</h2>
+        <PlainTextEditor
+          initialContent={document.content}
+          readOnly={false}
+        />
       </section>
 
       {isOwner && (

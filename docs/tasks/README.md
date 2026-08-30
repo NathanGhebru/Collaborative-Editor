@@ -6,10 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 3 — Document management milestone complete
-- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete
+- Current phase: Phase 4 — Plain-text editor shell milestone complete
+- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete
 - Measured benchmarks: none
-- Next task: `EDIT-001` (Implement the local editor experience)
+- Next task: `OT-001` (Resolve OT protocol blockers)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -267,7 +267,7 @@ Phase exit: API and browser workflows persist across application restart, and un
 
 ### EDIT-001: Implement the local editor experience
 
-**Status:** Not Started  
+**Status:** Complete  
 **Depends on:** `DOC-002`, `DOC-003`  
 **Parallel safe:** Primarily frontend-owned.
 
@@ -279,6 +279,8 @@ Verification:
 ./scripts/test-frontend.sh
 ./scripts/test-e2e.sh -- editor
 ```
+
+Verification note (2026-08-29): PlainTextEditor component (`PlainTextEditor.tsx`), useLocalEditor hook (`useLocalEditor.ts`), deterministic UTF-16 operation extraction (`operationExtractor.ts`), unit tests (`PlainTextEditor.test.tsx`), and Playwright E2E suite (`editor.spec.ts`) implemented and integrated into `DocumentDetailPage.tsx`. `npm run typecheck`, `npm run lint`, Vitest unit tests (24 passed), and Playwright E2E editor tests passed cleanly.
 
 Phase exit: the full app remains runnable and a user can load and edit document text locally with deterministic operation capture.
 
