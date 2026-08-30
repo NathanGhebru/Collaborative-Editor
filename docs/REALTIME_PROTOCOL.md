@@ -33,32 +33,31 @@ POST /api/v1/documents/{documentId}/realtime-ticket
 
 ---
 
-# 2. Ticket Requirements
+# 2. Ticket Requirements & Handshake Security
 
 A real-time ticket is:
 
-* short-lived (`TTL = 60s`),
-* single-use (atomically deleted from Redis on handshake via `GETDEL`),
+* short-lived (`TTL = 60 seconds`),
+* single-use (atomically invalidated upon WebSocket upgrade),
 * user-scoped (`userId`),
 * document-scoped (`documentId`),
 * permission-scoped (`OWNER` or `EDITOR`).
 
-The server rejects:
+### Handshake Failure vs. WebSocket Close Boundary:
 
-* expired tickets,
-* already-used tickets,
-* tickets for another document,
-* tickets from users with revoked document permissions.
+- **Before Successful Upgrade (HTTP Handshake Layer)**:
+  If a ticket is missing, invalid, expired, already consumed, or if the requesting user lacks document permission, the server rejects the WebSocket HTTP upgrade request with HTTP `401 Unauthorized` (or `404 Not Found` under the document concealment policy). No WebSocket connection is established, so no WebSocket close frame or close code is sent.
 
-Rejection during handshake returns HTTP `401 Unauthorized` / WS close code `4001` (`UNAUTHORIZED`). Successful handshake consumes the ticket.
+- **After Successful Upgrade (Established WebSocket Session)**:
+  If a user's document permission is revoked while connected, or the document is hard deleted via REST, or a fatal protocol violation occurs (e.g. sending a mismatched `documentId` in a message envelope), the server sends `server.error` (if applicable) and closes the established socket using the appropriate numeric WebSocket close code (`4001` for permission revoked, `4003` for document deleted, `4000` for bad request).
 
-The path document is the authorized room. If a message envelope contains a `documentId`, it must equal the path document or the server treats the message as a protocol violation and closes the socket; a client cannot switch rooms on an existing socket.
+The path document is the authorized room. If a message envelope contains a `documentId`, it must equal the path document or the server treats the message as a protocol violation and closes the socket with `4000` (`BAD_REQUEST`); a client cannot switch rooms on an existing socket.
 
 ---
 
 # 3. Message Encoding
 
-Protocol v1 uses UTF-8 JSON text frames exclusively. Binary frames are rejected with WS close code `4003` (`UNSUPPORTED_DATA`).
+Protocol v1 uses UTF-8 JSON text frames exclusively. Binary frames are rejected with WebSocket close code `1003` (`UNSUPPORTED_DATA`).
 
 All application messages contain:
 
@@ -78,7 +77,7 @@ Unknown fields in JSON envelopes are ignored by parsers (forward compatibility r
 
 ---
 
-# 4. Common Fields
+# 4. Common Fields & Semantics
 
 Where applicable, messages contain:
 
@@ -86,12 +85,16 @@ Where applicable, messages contain:
 | --- | --- | --- |
 | `protocolVersion` | integer | Fixed at `1` for protocol v1 |
 | `type` | string | Message event type discriminator |
-| `messageId` | string (UUID v4) | Transport correlation ID for diagnostics/logging |
+| `messageId` | string (UUID v4) | Transport-level frame correlation ID for diagnostics and logging |
 | `documentId` | string (UUID v4) | Target document UUID |
 | `syncEpoch` | string (UUID v4) | Synchronization epoch UUID |
 | `clientId` | string (UUID v4) | Originating browser client UUID |
-| `timestamp` | string (ISO 8601 UTC) | Message creation timestamp |
+| `timestamp` | string (ISO 8601 UTC) | Server processing timestamp for audit logging and UI display |
 | `payload` | object | Message-specific payload DTO |
+
+Field Semantics & Non-Use:
+- `messageId` is used strictly for transport frame logging and tracing. It is NOT used for OT logical deduplication (logical deduplication uses `documentId + syncEpoch + clientId + clientOperationId`).
+- `timestamp` is informational only. It is NOT used for operation ordering or conflict resolution (ordering is strictly governed by `revision`).
 
 ---
 
@@ -147,40 +150,42 @@ A client must not generate a new operation ID merely because an acknowledgement 
 
 # 7. Initial Connection Sequence
 
-The normal startup flow is:
+The minimal deterministic connection and bootstrap sequence is:
 
 ```text
-REST load document
+REST GET /api/v1/documents/{documentId}
         ↓
-content + epoch E + revision R
+content snapshot + syncEpoch E + revision R
         ↓
-obtain real-time ticket
+REST POST /api/v1/documents/{documentId}/realtime-ticket
         ↓
-open WebSocket
+short-lived ticket
+        ↓
+open WebSocket wss://.../ws/v1/documents/{documentId}?ticket=<ticket>
         ↓
 client.hello(E, R)
         ↓
-server synchronization response
+server catch-up server.operations (if R < server currentRevision)
         ↓
-presence snapshot
+server.ready(E, server currentRevision)
         ↓
-server.ready
-        ↓
-live collaboration
+active collaboration (edit submission permitted)
 ```
 
 ---
 
 # 8. `client.hello`
 
-The first application message from a newly connected client.
+The first application message sent by a newly connected client immediately after the WebSocket handshake.
 
 ```json
 {
   "protocolVersion": 1,
   "type": "client.hello",
   "messageId": "2037cead-f834-46ab-a557-478a24027067",
-  "clientId": "7a719fbf-87ce-408d-beac-c665df880eaf",
+  "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
+  "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
+  "timestamp": "2026-08-30T12:15:00.000Z",
   "payload": {
     "knownEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
     "knownRevision": 921
@@ -188,15 +193,13 @@ The first application message from a newly connected client.
 }
 ```
 
-No edit messages may be processed until synchronization completes.
+No `client.operation` messages may be transmitted until the client receives `server.ready`.
 
 ---
 
 # 9. `server.ready`
 
-Sent after successful authentication and synchronization.
-
-The initial `presence.snapshot` is sent before `server.ready`; receipt of `server.ready` is the sole signal that edit transmission may begin.
+Sent by the server to confirm successful synchronization and signal that live edit transmission may begin.
 
 ```json
 {
@@ -204,42 +207,33 @@ The initial `presence.snapshot` is sent before `server.ready`; receipt of `serve
   "type": "server.ready",
   "messageId": "408f4163-a915-4830-8a5e-f86414db625c",
   "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
-  "connectionId": "6cca533d-aa28-4624-b0d9-f8078ed2e4d2",
   "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
-  "revision": 924,
-  "payload": {}
+  "timestamp": "2026-08-30T12:15:00.010Z",
+  "payload": {
+    "connectionId": "6cca533d-aa28-4624-b0d9-f8078ed2e4d2",
+    "revision": 924,
+    "role": "OWNER"
+  }
 }
 ```
 
-After this message the client may submit operations.
+Receipt of `server.ready` is the sole authoritative signal that edit submission may start.
 
 ---
 
-# 10. Initial Delta Catch-Up
+# 10. Race Resolution & Catch-Up Operations
 
-Suppose:
+To resolve the race where the document is edited concurrently between the initial REST fetch at revision $R$ and WebSocket readiness at revision $R+k$:
 
-```text
-client revision = 921
-server revision = 924
-epoch matches
-```
-
-The server may send revisions:
-
-```text
-922
-923
-924
-```
-
-before `server.ready`.
+1. Upon receiving `client.hello`, the server compares `knownRevision` ($R$) with its `currentRevision` ($R+k$).
+2. If `knownEpoch == syncEpoch` and $R < R+k$, the server sends a `server.operations` message containing all contiguous canonical operations from revision $R+1$ through $R+k$ **before** sending `server.ready`.
+3. If `knownEpoch != syncEpoch`, the server responds with `server.resync_required { reason: "EPOCH_MISMATCH" }`.
 
 ---
 
-# 11. `server.operations`
+# 11. `server.operations` & Batching Rules
 
-Carries one or more accepted canonical operations.
+Carries one or more accepted canonical operations. In protocol v1, `server.operations` is the single authoritative mechanism for both broadcasting canonical operations to remote collaborators AND acknowledging the originating client's in-flight edit.
 
 ```json
 {
@@ -248,17 +242,18 @@ Carries one or more accepted canonical operations.
   "messageId": "5d61be99-3907-4291-b65d-0d249b23eb76",
   "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
   "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
+  "timestamp": "2026-08-30T12:15:00.050Z",
   "payload": {
     "operations": [
       {
-        "revision": 922,
-        "clientId": "6a670f82-bf16-403d-82bd-69ad26476108",
-        "clientOperationId": "18e5a1c0-71e4-4b05-be54-f03826edaf33",
-        "actorUserId": "7ab5e5a4-ab19-41fd-bac2-4ddfbc88ac31",
+        "revision": 925,
+        "clientId": "7a719fbf-87ce-408d-beac-c665df880eaf",
+        "clientOperationId": "a21acdd4-2248-485d-ac37-5cbbfdc13ccb",
+        "actorUserId": "9cd819ab-20de-4356-8870-69757480c0d1",
         "operation": {
           "kind": "INSERT",
-          "position": 4,
-          "text": "hello"
+          "position": 19,
+          "text": "distributed "
         }
       }
     ]
@@ -266,7 +261,12 @@ Carries one or more accepted canonical operations.
 }
 ```
 
-Operations must be ordered by ascending canonical revision.
+Batching and Ordering Constraints:
+- `payload.operations` contains a non-empty array of canonical operation items. Empty arrays (`operations: []`) are forbidden.
+- Revisions in the array MUST be strictly contiguous and ascending (e.g. `[925]` or `[925, 926, 927]`).
+- During live collaboration: Typically contains exactly 1 canonical operation (`[925]`).
+- During catch-up/reconnect: Contains contiguous historical operations `[knownRevision + 1 ... currentRevision]`.
+- Delivered ONLY AFTER PostgreSQL transaction commit via `DocumentSequencingService.submitOperation`.
 
 ---
 
@@ -525,25 +525,18 @@ and must resynchronize.
 
 ---
 
-# 22. Operation Acknowledgement
+# 22. Single-Stream Operation Delivery & Acknowledgement
 
-The origin client receives the same canonical accepted operation as other clients, followed on that socket by a compact acknowledgement:
+In protocol v1, the canonical `server.operations` broadcast is the sole authoritative message for BOTH broadcasting accepted edits to remote collaborators AND acknowledging the originating client's in-flight edit. Separate acknowledgement frames (`server.operation_ack`) are omitted to eliminate message races and maintain a single unified stream of canonical ordered operations.
 
-```json
-{
-  "protocolVersion": 1,
-  "type": "server.operation_ack",
-  "messageId": "cb047817-7aa3-43dc-a96f-e1563150ed44",
-  "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
-  "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
-  "revision": 925,
-  "payload": {
-    "clientOperationId": "a21acdd4-2248-485d-ac37-5cbbfdc13ccb"
-  }
-}
-```
-
-The client may remove the corresponding operation from its pending queue only after acceptance is confirmed.
+Acknowledgement Matching Rules for Origin Client:
+1. When a client receives a `server.operations` frame containing items $R_1 \dots R_k$:
+2. For each item $R_i$:
+   - If `R_i.clientId == localClientId` AND `R_i.clientOperationId == inFlight.clientOperationId`:
+     - The origin client confirms its in-flight operation at canonical `R_i.revision`.
+     - The client advances `confirmedRevision = R_i.revision`, removes `inFlight`, and if its local buffer is non-empty, dequeues the next buffered edit $B_1$, sets `baseRevision = confirmedRevision`, and transmits `client.operation`.
+   - Else (`R_i.clientId != localClientId`):
+     - Remote operation: The client transforms its in-flight operation $A$ and local buffer $B_1 \dots B_n$ against `R_i.operation` using `transform(R_i.operation, A)`, advances `confirmedRevision = R_i.revision`, and applies the transformed remote operation to its confirmed document view.
 
 ---
 
@@ -605,37 +598,46 @@ If `fatal` is `true`, the server closes the WebSocket immediately after sending 
 
 # 25. Error & Close Code Specification
 
-### 25.1 Rejection & Error Codes
+### 25.1 Error Classification Matrix
 
-| Code | Level | Fatal | Socket Action | Client Action |
+| Error Condition | Error Type / Code | Wire Response | Socket Action | Client Action |
 | --- | --- | --- | --- | --- |
-| `UNAUTHENTICATED` | Protocol | Yes | Close `4001` | Obtain new ticket & reconnect |
-| `DOCUMENT_FORBIDDEN` | Protocol | Yes | Close `4001` | Stop; show permission error |
-| `INVALID_MESSAGE` | Protocol | Yes/No | Close `4000` if frame | Discard message or fix envelope |
-| `UNSUPPORTED_PROTOCOL_VERSION` | Protocol | Yes | Close `4002` | Stop; update client |
-| `INVALID_OPERATION` | Operation | No | Keep Open | Drop operation; notify user |
-| `INVALID_POSITION` | Operation | No | Keep Open | Drop operation |
-| `INVALID_LENGTH` | Operation | No | Keep Open | Drop operation |
-| `INSERT_TOO_LARGE` | Operation | No | Keep Open | Drop operation |
-| `DOCUMENT_TOO_LARGE` | Operation | No | Keep Open | Drop operation |
-| `IDENTITY_CONFLICT` | Operation | No | Keep Open | Drop operation (different payload reuse) |
-| `EPOCH_MISMATCH` | Synchronization | No | Send `server.resync_required` | Reload REST snapshot & resync |
-| `REVISION_AHEAD` | Synchronization | No | Send `server.resync_required` | Reload REST snapshot & resync |
-| `RATE_LIMIT_EXCEEDED` | Protocol | Yes | Close `4008` | Backoff & reconnect |
-| `DOCUMENT_NOT_FOUND` | Protocol | Yes | Close `4003` | Stop; notify user |
-| `INTERNAL_ERROR` | System | No | Keep Open | Retry operation |
+| **HTTP Ticket Request: Invalid Bearer Token** | `UNAUTHENTICATED` | HTTP `401 Unauthorized` | No WS upgrade | Login & refresh token |
+| **HTTP Ticket Request: Non-existent / Inaccessible Document** | `DOCUMENT_NOT_FOUND` | HTTP `404 Not Found` | No WS upgrade | Stop; show error |
+| **HTTP WS Upgrade: Invalid / Expired / Used Ticket** | `UNAUTHORIZED` | HTTP `401 Unauthorized` | No WS upgrade | Re-acquire ticket via REST |
+| **Malformed WS JSON Frame** | `INVALID_MESSAGE` | `server.error { code: "INVALID_MESSAGE", fatal: true }` | WS Close `4000` (`BAD_REQUEST`) | Fix client JSON frame |
+| **Missing Envelope Fields / Unknown Protocol Version** | `UNSUPPORTED_PROTOCOL_VERSION` | `server.error { code: "UNSUPPORTED_PROTOCOL_VERSION", fatal: true }` | WS Close `4002` (`UNSUPPORTED_PROTOCOL_VERSION`) | Stop; update client |
+| **Document ID Mismatch in Envelope** | `BAD_REQUEST` | `server.error { code: "INVALID_MESSAGE", fatal: true }` | WS Close `4000` (`BAD_REQUEST`) | Fix client room binding |
+| **Invalid Operation Payload Structure / Client GROUP or NO_OP** | `INVALID_OPERATION` | `server.operation_rejected { code: "INVALID_OPERATION" }` | Socket Remains OPEN | Drop operation; notify user |
+| **Invalid UTF-16 Position / Surrogate Pair Bisection** | `INVALID_POSITION` | `server.operation_rejected { code: "INVALID_POSITION" }` | Socket Remains OPEN | Drop operation |
+| **Invalid UTF-16 Delete Length / Surrogate Pair Bisection** | `INVALID_LENGTH` | `server.operation_rejected { code: "INVALID_LENGTH" }` | Socket Remains OPEN | Drop operation |
+| **Insert Text Exceeds 10,000 UTF-16 Code Units** | `INSERT_TOO_LARGE` | `server.operation_rejected { code: "INSERT_TOO_LARGE" }` | Socket Remains OPEN | Drop operation |
+| **Document Content Exceeds 1,000,000 UTF-16 Code Units** | `DOCUMENT_TOO_LARGE` | `server.operation_rejected { code: "DOCUMENT_TOO_LARGE" }` | Socket Remains OPEN | Drop operation |
+| **Identity Reuse with Conflicting Payload** | `IDENTITY_CONFLICT` | `server.operation_rejected { code: "IDENTITY_CONFLICT" }` | Socket Remains OPEN | Drop operation |
+| **Stale Epoch Submitted** | `EPOCH_MISMATCH` | `server.resync_required { reason: "EPOCH_MISMATCH" }` | Socket Remains OPEN | Reload REST snapshot & resync |
+| **Future Base Revision Submitted (`baseRevision > currentRevision`)** | `REVISION_AHEAD` | `server.resync_required { reason: "REVISION_AHEAD" }` | Socket Remains OPEN | Reload REST snapshot & resync |
+| **User Permission Revoked While Connected** | `DOCUMENT_FORBIDDEN` | `server.error { code: "DOCUMENT_FORBIDDEN", fatal: true }` | WS Close `4001` (`UNAUTHORIZED`) | Stop; show permission revoked |
+| **Document Hard Deleted via REST While Connected** | `DOCUMENT_DELETED` | `server.error { code: "DOCUMENT_NOT_FOUND", fatal: true }` | WS Close `4003` (`DOCUMENT_DELETED`) | Stop; notify user |
+| **WS Frame Size Exceeds 64 KB (65,536 bytes)** | `PAYLOAD_TOO_LARGE` | `server.error { code: "PAYLOAD_TOO_LARGE", fatal: true }` | WS Close `1009` (`PAYLOAD_TOO_LARGE`) | Fix frame size |
+| **Rate Limit Exceeded** | `RATE_LIMIT_EXCEEDED` | `server.error { code: "RATE_LIMIT_EXCEEDED", fatal: true }` | WS Close `1008` (`POLICY_VIOLATION`) | Backoff reconnect |
+| **Internal Transient Sequencing Failure** | `INTERNAL_ERROR` | `server.error { code: "INTERNAL_ERROR", fatal: false }` | Socket Remains OPEN | Retry operation |
 
-### 25.2 Numeric WebSocket Close Codes (RFC 6455 Range 4000–4999)
+### 25.2 Authoritative WebSocket Close Codes
 
 | Close Code | Constant | Meaning | Reconnect Category |
 | ---: | --- | --- | --- |
-| `4000` | `BAD_REQUEST` | Malformed message frame or envelope | Non-retryable |
-| `4001` | `UNAUTHORIZED` | Invalid/expired ticket or permission revoked | Re-authenticate via REST |
+| `1000` | `NORMAL_CLOSURE` | Graceful socket close during shutdown | Expected |
+| `1001` | `GOING_AWAY` | Backend server instance shutting down | Exponential backoff |
+| `1002` | `PROTOCOL_ERROR` | Fatal WebSocket framing error | Non-retryable |
+| `1003` | `UNSUPPORTED_DATA` | Binary frame received (text frames required) | Non-retryable |
+| `1008` | `POLICY_VIOLATION` | Message rate limit violation | Exponential backoff |
+| `1009` | `PAYLOAD_TOO_LARGE` | Frame size > 64 KB (65,536 bytes) | Non-retryable |
+| `1011` | `INTERNAL_ERROR` | Unexpected internal server exception | Exponential backoff |
+| `4000` | `BAD_REQUEST` | Malformed JSON text frame or missing required envelope fields | Non-retryable |
+| `4001` | `UNAUTHORIZED` | Post-handshake permission revocation or room binding violation | Re-authenticate via REST |
 | `4002` | `UNSUPPORTED_PROTOCOL_VERSION` | Client `protocolVersion != 1` | Non-retryable |
-| `4003` | `DOCUMENT_DELETED` | Target document hard deleted | Non-retryable |
-| `4004` | `SESSION_SUPERSEDED` | Connection replaced by newer session | Non-retryable |
-| `4008` | `RATE_LIMIT_EXCEEDED` | Exceeded message or connection rate limit | Backoff reconnect |
-| `4009` | `PAYLOAD_TOO_LARGE` | Frame or operation exceeded max bounds | Non-retryable |
+| `4003` | `DOCUMENT_DELETED` | Target document hard deleted via REST while client connected | Non-retryable |
+| `4004` | `SESSION_SUPERSEDED` | Duplicate connection for same client session replaced | Non-retryable |
 
 ---
 

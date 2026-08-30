@@ -23,7 +23,6 @@
       "protocolVersion": 1,
       "type": "client.hello",
       "messageId": "2037cead-f834-46ab-a557-478a24027067",
-      "clientId": "7a719fbf-87ce-408d-beac-c665df880eaf",
       "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
       "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
       "timestamp": "2026-08-30T12:15:00.000Z",
@@ -158,18 +157,6 @@
         ]
       }
     },
-    "serverOperationAck": {
-      "protocolVersion": 1,
-      "type": "server.operation_ack",
-      "messageId": "cb047817-7aa3-43dc-a96f-e1563150ed44",
-      "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
-      "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
-      "timestamp": "2026-08-30T12:15:00.051Z",
-      "payload": {
-        "clientOperationId": "a21acdd4-2248-485d-ac37-5cbbfdc13ccb",
-        "revision": 925
-      }
-    },
     "serverOperationRejected": {
       "protocolVersion": 1,
       "type": "server.operation_rejected",
@@ -216,65 +203,6 @@
       "timestamp": "2026-08-30T12:15:00.055Z",
       "payload": {
         "reason": "EPOCH_MISMATCH"
-      }
-    },
-    "presenceSnapshot": {
-      "protocolVersion": 1,
-      "type": "presence.snapshot",
-      "messageId": "1956142a-05cf-44d7-bd55-b8b06937b6c5",
-      "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
-      "timestamp": "2026-08-30T12:15:00.005Z",
-      "payload": {
-        "users": [
-          {
-            "userId": "9cd819ab-20de-4356-8870-69757480c0d1",
-            "displayName": "Nathan",
-            "connections": 1
-          }
-        ]
-      }
-    },
-    "presenceChanged": {
-      "protocolVersion": 1,
-      "type": "presence.changed",
-      "messageId": "78992be8-e515-4e29-bd85-8169729166f4",
-      "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
-      "timestamp": "2026-08-30T12:15:05.000Z",
-      "payload": {
-        "event": "JOINED",
-        "user": {
-          "userId": "7ab5e5a4-ab19-41fd-bac2-4ddfbc88ac31",
-          "displayName": "Collaborator"
-        }
-      }
-    },
-    "cursorUpdate": {
-      "protocolVersion": 1,
-      "type": "cursor.update",
-      "messageId": "7ac1e178-cb58-42f6-9934-a2c8f89ac753",
-      "clientId": "7a719fbf-87ce-408d-beac-c665df880eaf",
-      "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
-      "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
-      "timestamp": "2026-08-30T12:15:00.100Z",
-      "payload": {
-        "baseRevision": 925,
-        "anchor": 20,
-        "head": 25
-      }
-    },
-    "cursorRemote": {
-      "protocolVersion": 1,
-      "type": "cursor.remote",
-      "messageId": "cfc3627e-f050-45ec-aad5-9b38b5f9526a",
-      "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
-      "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
-      "timestamp": "2026-08-30T12:15:00.105Z",
-      "payload": {
-        "userId": "7a719fbf-87ce-408d-beac-c665df880eaf",
-        "displayName": "Nathan",
-        "connectionId": "6cca533d-aa28-4624-b0d9-f8078ed2e4d2",
-        "anchor": 20,
-        "head": 25
       }
     }
   }

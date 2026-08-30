@@ -379,12 +379,11 @@ server.operations
 server.operation_rejected
 ```
 
-The origin client receives both:
+The origin client and remote collaborators receive:
 
-* acknowledgement,
-* canonical accepted operation.
+* canonical accepted operations (`server.operations`).
 
-The canonical operation is delivered before its compact acknowledgement on that socket. The client must treat canonical revision information as authoritative and must tolerate duplicate delivery by operation identity and revision.
+In protocol v1, `server.operations` is the single authoritative message for both broadcasting canonical operations to remote collaborators and acknowledging the originating client's in-flight edit. The origin client matches `(clientId, clientOperationId)` in `server.operations` to confirm its in-flight edit and advance `confirmedRevision`. Separate acknowledgement frames are omitted to prevent message races and simplify stream ordering.
 
 ---
 

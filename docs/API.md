@@ -746,11 +746,11 @@ Content-Type: application/json
 ```
 
 Ticket rules & lifecycle:
-- `ticket`: Cryptographically secure random token string prefixed with `rt_`.
+- `ticket`: High-entropy random token string prefixed with `rt_`.
 - `expiresAt`: ISO 8601 UTC timestamp exactly 60 seconds from creation (`TTL = 60s`).
 - `websocketPath`: Canonical WebSocket URL path `/ws/v1/documents/{documentId}`.
-- Single-use consumption: Stored in Redis as `rt_ticket:{ticketId}` mapped to JSON `{ userId, documentId, role, createdAt }`. Atomically deleted upon WebSocket handshake verification.
-- Re-use or expiration attempt results in `401 Unauthorized` / WS close code `4001` (`UNAUTHORIZED`).
+- Single-use consumption: Atomically invalidated upon WebSocket upgrade.
+- Re-use, expiration, or invalid ticket attempt results in HTTP `401 Unauthorized` during the WebSocket handshake.
 
 ### Error Responses
 
