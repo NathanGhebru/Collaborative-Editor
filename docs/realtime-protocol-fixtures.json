@@ -201,6 +201,7 @@
       "type": "server.resync_required",
       "messageId": "3d104027-ad8e-4ffe-a317-913a17bc1180",
       "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
+      "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
       "timestamp": "2026-08-30T12:15:00.055Z",
       "payload": {
         "reason": "EPOCH_MISMATCH"
