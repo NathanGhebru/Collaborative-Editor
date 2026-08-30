@@ -281,7 +281,7 @@ class CanonicalOperationPersistenceAcceptanceIT {
                     UUID.fromString("a2222222-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
                     DOCUMENT_A,
                     EPOCH_B,
-                    1,
+                    0,
                     history.path("initialDocument").asText()
             );
             CanonicalBatch newEpochBatch = withId(
