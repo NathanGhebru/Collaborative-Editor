@@ -564,4 +564,4 @@ Phase exit: every stated improvement links to reproducible before/after evidence
 
 ## Next task
 
-`BOOT-001` is complete. `AUTH-001` is the next task in sequence and has not been started. Do not begin OT, WebSocket, Redis coordination, or AWS work during bootstrap.
+`AUTH-001`, `AUTH-002`, and `AUTH-003` are complete and integrated. `DOC-001` (Freeze document API and schema limits) is the next task in sequence. Do not begin OT, WebSocket, Redis coordination, or AWS work prior to document API freezing.
