@@ -147,7 +147,7 @@ Expired and revoked records may be periodically purged via a scheduled cleanup q
 
 ---
 
-# 6. `documents`
+# 6. `documents` (Frozen - DOC-001)
 
 Stores durable document metadata and current synchronization identity.
 
@@ -155,28 +155,35 @@ Stores durable document metadata and current synchronization identity.
 documents
 ---------
 id                  UUID PRIMARY KEY
-owner_id            UUID NOT NULL REFERENCES users(id)
-title               VARCHAR(...) NOT NULL
+owner_id            UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT
+title               VARCHAR(255) NOT NULL
 sync_epoch          UUID NOT NULL
-current_revision    BIGINT NOT NULL
-created_at          TIMESTAMPTZ NOT NULL
-updated_at          TIMESTAMPTZ NOT NULL
-Initial state:
-
-```text
-current_revision = 0
-sync_epoch = generated UUID
+current_revision    BIGINT NOT NULL DEFAULT 0
+created_at          TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+updated_at          TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 ```
 
-`current_revision` represents the highest durably committed canonical revision.
+Initial state upon creation:
+- `current_revision` = 0
+- `sync_epoch` = newly generated UUID v4
+- `title` = trimmed string (1 to 255 chars)
 
-Creating a document atomically inserts both the document row and a revision-0 snapshot containing its initial text. A document is therefore recoverable without relying on an implicit initial body.
+Constraints & Rules:
+- `owner_id`: Foreign key to `users(id)` with `ON DELETE RESTRICT`. Users cannot be hard-deleted while owning active documents.
+- `title`: `VARCHAR(255)` constraint. Non-empty string.
+
+Indexes:
+```text
+idx_documents_owner_id ON documents(owner_id)
+idx_documents_updated_at_id ON documents(updated_at DESC, id DESC)
+```
+
+Creation Transaction:
+Creating a document atomically inserts both the `documents` row and an initial revision-0 snapshot in `document_snapshots` within a single database transaction.
 
 ---
 
-# 7. Document Content
-
-The `documents` table does not need to rewrite a large text field on every collaborative operation.
+# 7. Document Content & Initial Revision-0 Snapshots (Frozen - DOC-001)
 
 Canonical recoverable content is represented by:
 
@@ -186,41 +193,65 @@ latest durable snapshot
 later committed operation batches
 ```
 
-This avoids a full document rewrite per keystroke.
+To support initial content persistence and full snapshot recovery, snapshots are stored in `document_snapshots`:
+
+```sql
+document_snapshots
+------------------
+id                  UUID PRIMARY KEY
+document_id         UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE
+sync_epoch          UUID NOT NULL
+revision            BIGINT NOT NULL
+content             TEXT NOT NULL
+content_hash        VARCHAR(64) NOT NULL
+created_at          TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+CONSTRAINT uk_document_snapshots_doc_rev UNIQUE (document_id, revision)
+```
+
+Rules:
+- When a document is created with initial text (or empty string `""`), a snapshot with `revision = 0`, `sync_epoch = <document_sync_epoch>`, `content = <initialContent>`, and `content_hash = SHA256(content)` is inserted atomically.
+- `ON DELETE CASCADE`: Deleting a document hard-deletes all associated snapshots.
+
+Indexes:
+```text
+idx_document_snapshots_doc_rev UNIQUE ON document_snapshots(document_id, revision)
+```
 
 ---
 
-# 8. `document_permissions`
+# 8. `document_permissions` (Frozen - DOC-001)
 
-Stores non-owner document access.
+Stores non-owner document access rights.
 
 ```sql
 document_permissions
 --------------------
-document_id         UUID NOT NULL REFERENCES documents(id)
-user_id             UUID NOT NULL REFERENCES users(id)
-role                VARCHAR(...) NOT NULL
-granted_by          UUID NOT NULL REFERENCES users(id)
-created_at          TIMESTAMPTZ NOT NULL
-updated_at          TIMESTAMPTZ NOT NULL
+id                  UUID PRIMARY KEY
+document_id         UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE
+user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
+role                VARCHAR(32) NOT NULL DEFAULT 'EDITOR'
+granted_by          UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT
+created_at          TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+updated_at          TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 
-PRIMARY KEY (document_id, user_id)
+CONSTRAINT uk_document_permissions_doc_user UNIQUE (document_id, user_id),
+CONSTRAINT chk_document_permissions_role CHECK (role IN ('EDITOR'))
 ```
 
-Initial role:
-
-```text
-EDITOR
-```
-
-The owner does not require a duplicate permission row.
+Rules:
+- Initial supported role: `'EDITOR'`.
+- The document owner does not require a row in `document_permissions`; ownership is defined by `documents.owner_id`.
+- `ON DELETE CASCADE`: Deleting a document hard-deletes all associated permission rows. Deleting a user revokes their granted permissions.
 
 Indexes:
-
 ```text
-user_id
-document_id
+idx_document_permissions_user_id ON document_permissions(user_id)
+idx_document_permissions_doc_user UNIQUE ON document_permissions(document_id, user_id)
 ```
+
+Migration Tool:
+Flyway migrations located at `backend/src/main/resources/db/migration/V2__init_document_schema.sql`.
 
 ---
 
