@@ -12,5 +12,7 @@ public interface DocumentSnapshotRepository extends JpaRepository<DocumentSnapsh
     Optional<DocumentSnapshot> findTopByDocumentIdOrderByRevisionDesc(UUID documentId);
 
     Optional<DocumentSnapshot> findByDocumentIdAndRevision(UUID documentId, Long revision);
+
+    void deleteByDocumentId(UUID documentId);
 }
 

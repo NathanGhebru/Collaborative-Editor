@@ -17,5 +17,7 @@ public interface DocumentPermissionRepository extends JpaRepository<DocumentPerm
     boolean existsByDocumentIdAndUserId(UUID documentId, UUID userId);
 
     void deleteByDocumentIdAndUserId(UUID documentId, UUID userId);
+
+    void deleteByDocumentId(UUID documentId);
 }
 

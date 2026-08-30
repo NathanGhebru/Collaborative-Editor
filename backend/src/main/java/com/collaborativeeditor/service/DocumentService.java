@@ -230,6 +230,8 @@ public class DocumentService {
             throw new ApiException(ErrorCode.DOCUMENT_NOT_FOUND);
         }
 
+        documentSnapshotRepository.deleteByDocumentId(documentId);
+        documentPermissionRepository.deleteByDocumentId(documentId);
         documentRepository.delete(document);
         auditLog.info("DOCUMENT_DELETED docId={} ownerId={}", documentId, user.getId());
     }
