@@ -279,7 +279,9 @@ Return the authenticated user.
 
 ---
 
-# 12. Document Summary Representation
+# 12. Document Summary Representation (Frozen - DOC-001)
+
+Represented in document listing endpoints (`GET /api/v1/documents`).
 
 ```json
 {
@@ -287,6 +289,7 @@ Return the authenticated user.
   "title": "Distributed Systems Notes",
   "owner": {
     "id": "9cd819ab-20de-4356-8870-69757480c0d1",
+    "username": "nathan",
     "displayName": "Nathan"
   },
   "permission": "OWNER",
@@ -297,9 +300,21 @@ Return the authenticated user.
 }
 ```
 
+Field rules:
+- `id`: Opaque UUID v4 string.
+- `title`: Non-empty string, trimmed, 1 to 255 characters.
+- `owner`: Summary representation of document creator/owner containing `id`, `username`, and `displayName`.
+- `permission`: Role of the requesting user. Values: `"OWNER"`, `"EDITOR"`.
+- `currentRevision`: Non-negative 64-bit integer (`0` for newly created documents).
+- `syncEpoch`: UUID string representing the active collaboration epoch.
+- `createdAt`: ISO 8601 UTC timestamp.
+- `updatedAt`: ISO 8601 UTC timestamp.
+
 ---
 
-# 13. Document Detail Representation
+# 13. Document Detail Representation (Frozen - DOC-001)
+
+Represented in single-document endpoints (`POST /api/v1/documents`, `GET /api/v1/documents/{documentId}`).
 
 ```json
 {
@@ -308,6 +323,7 @@ Return the authenticated user.
   "content": "Consensus is...",
   "owner": {
     "id": "9cd819ab-20de-4356-8870-69757480c0d1",
+    "username": "nathan",
     "displayName": "Nathan"
   },
   "permission": "OWNER",
@@ -318,22 +334,18 @@ Return the authenticated user.
 }
 ```
 
-The pair:
-
-```text
-syncEpoch
-currentRevision
-```
-
-identifies the synchronization state represented by `content`.
+Field rules:
+- Includes all fields from Document Summary Representation.
+- `content`: Plain-text document string (0 to 1,000,000 UTF-16 code units / 1 MB max).
+- The pair (`syncEpoch`, `currentRevision`) identifies the exact snapshot version represented by `content`.
 
 ---
 
-# 14. POST `/documents`
+# 14. POST `/api/v1/documents` (Frozen - DOC-001)
 
-Create a document.
+Create a new document.
 
-### Request
+### Request Body
 
 ```json
 {
@@ -341,26 +353,36 @@ Create a document.
 }
 ```
 
-Optional:
+Optional initial content:
 
 ```json
 {
   "title": "Distributed Systems Notes",
-  "initialContent": "Introduction"
+  "initialContent": "Introduction to consensus algorithms."
 }
 ```
 
-### Success
+Validation constraints:
+- `title`: Required string, 1 to 255 characters after trimming (`^[^\r\n]{1,255}$`). Must not contain newlines.
+- `initialContent`: Optional string, max 1,000,000 UTF-16 code units (1 MB). If omitted or `null`, defaults to `""` (empty string).
+
+### Success Response
 
 ```http
-201 Created
+HTTP/1.1 201 Created
+Content-Type: application/json
 ```
 
 ```json
 {
   "id": "f3481704-6158-4eb9-af12-a2865d962edd",
   "title": "Distributed Systems Notes",
-  "content": "Introduction",
+  "content": "Introduction to consensus algorithms.",
+  "owner": {
+    "id": "9cd819ab-20de-4356-8870-69757480c0d1",
+    "username": "nathan",
+    "displayName": "Nathan"
+  },
   "permission": "OWNER",
   "currentRevision": 0,
   "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
@@ -369,35 +391,40 @@ Optional:
 }
 ```
 
-If `initialContent` is omitted, `content` is the empty string. In both cases the returned content is represented durably by the document's revision-0 snapshot.
+Document creation atomically persists the document row and a revision-0 snapshot in `document_snapshots` within a single transaction.
 
-### Errors
+### Error Responses
 
-```text
-INVALID_TITLE
-DOCUMENT_TOO_LARGE
-```
+- `422 UNPROCESSABLE_ENTITY` (`INVALID_TITLE`): Title missing, empty, blank, or exceeds 255 characters.
+- `422 UNPROCESSABLE_ENTITY` (`DOCUMENT_TOO_LARGE`): `initialContent` exceeds 1,000,000 characters.
+- `401 UNAUTHENTICATED` (`UNAUTHENTICATED`): Missing or invalid Bearer access token.
+- `400 BAD_REQUEST` (`INVALID_REQUEST`): Malformed JSON request body.
 
 ---
 
-# 15. GET `/documents`
+# 15. GET `/api/v1/documents` (Frozen - DOC-001)
 
-List documents accessible by the authenticated user.
+List all documents accessible by the authenticated user (owned documents and explicitly shared documents).
 
 ### Query Parameters
 
-```text
-limit
-cursor
-```
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `limit` | integer | `20` | Page size (Min: 1, Max: 100). Bounded by server. |
+| `cursor` | string | `null` | Opaque base64url pagination cursor. |
 
-Example:
+Example request:
 
 ```http
 GET /api/v1/documents?limit=25
 ```
 
-### Success
+### Success Response
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
 
 ```json
 {
@@ -407,32 +434,41 @@ GET /api/v1/documents?limit=25
       "title": "Distributed Systems Notes",
       "owner": {
         "id": "9cd819ab-20de-4356-8870-69757480c0d1",
+        "username": "nathan",
         "displayName": "Nathan"
       },
       "permission": "OWNER",
       "currentRevision": 921,
+      "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
+      "createdAt": "2026-08-28T07:00:00Z",
       "updatedAt": "2026-08-28T07:45:12Z"
     }
   ],
-  "nextCursor": null
+  "nextCursor": "eyJ1cGRhdGVkQXQiOiIyMDI2LTA4LTI4VDA3OjQ1OjEyWiIsImlkIjoiZjM0ODE3MDQtNjE1OC00ZWI5LWFmMTItYTI4NjVkOTYyZWRkIn0"
 }
 ```
 
-Maximum `limit` should be bounded by the server.
+Pagination ordering:
+- Documents are sorted by `updatedAt DESC, id DESC`.
+- `nextCursor` is `null` when no further pages exist.
+
+### Error Responses
+
+- `422 UNPROCESSABLE_ENTITY` (`INVALID_CURSOR`): Malformed or unparseable pagination cursor.
+- `401 UNAUTHENTICATED` (`UNAUTHENTICATED`): Missing or invalid Bearer access token.
 
 ---
 
-# 16. GET `/documents/{documentId}`
+# 16. GET `/api/v1/documents/{documentId}` (Frozen - DOC-001)
 
-Retrieve the current document snapshot.
+Retrieve current document snapshot and detail representation.
 
-This endpoint is used for:
+### Success Response
 
-* initial page load
-* full resynchronization
-* recovery after epoch mismatch
-
-### Success
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
 
 ```json
 {
@@ -441,6 +477,7 @@ This endpoint is used for:
   "content": "Consensus is...",
   "owner": {
     "id": "9cd819ab-20de-4356-8870-69757480c0d1",
+    "username": "nathan",
     "displayName": "Nathan"
   },
   "permission": "EDITOR",
@@ -451,28 +488,26 @@ This endpoint is used for:
 }
 ```
 
-### Errors
+### Authorization & Concealment Policy
 
-```text
-DOCUMENT_NOT_FOUND
-DOCUMENT_FORBIDDEN
-```
+- If the document does not exist OR if the requesting user is neither the owner nor an explicit editor, the server returns `404 DOCUMENT_NOT_FOUND` to conceal private document identifiers.
+
+### Error Responses
+
+- `404 NOT_FOUND` (`DOCUMENT_NOT_FOUND`): Document does not exist or user has no access.
+- `401 UNAUTHENTICATED` (`UNAUTHENTICATED`): Missing or invalid Bearer access token.
 
 ---
 
-# 17. PATCH `/documents/{documentId}`
+# 17. PATCH `/api/v1/documents/{documentId}` (Frozen - DOC-001)
 
-Update document metadata.
+Update document metadata (such as document title).
 
-Initial permission:
+Initial required permission: `OWNER` or `EDITOR`.
 
-```text
-OWNER or EDITOR
-```
+Note: Text body editing is performed via WebSocket operations, not this HTTP endpoint.
 
-Normal body editing does not use this endpoint.
-
-### Request
+### Request Body
 
 ```json
 {
@@ -480,64 +515,68 @@ Normal body editing does not use this endpoint.
 }
 ```
 
-### Success
+Validation constraints:
+- `title`: Required string, 1 to 255 characters after trimming (`^[^\r\n]{1,255}$`). Must not contain newlines.
+
+### Success Response
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
 
 ```json
 {
   "id": "f3481704-6158-4eb9-af12-a2865d962edd",
   "title": "Advanced Distributed Systems Notes",
+  "owner": {
+    "id": "9cd819ab-20de-4356-8870-69757480c0d1",
+    "username": "nathan",
+    "displayName": "Nathan"
+  },
+  "permission": "OWNER",
   "currentRevision": 921,
+  "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
+  "createdAt": "2026-08-28T07:00:00Z",
   "updatedAt": "2026-08-28T08:10:00Z"
 }
 ```
 
-### Errors
+### Error Responses
 
-```text
-DOCUMENT_NOT_FOUND
-DOCUMENT_FORBIDDEN
-INVALID_TITLE
-```
+- `404 NOT_FOUND` (`DOCUMENT_NOT_FOUND`): Document does not exist or requesting user has no access.
+- `422 UNPROCESSABLE_ENTITY` (`INVALID_TITLE`): Title missing, empty, or exceeds 255 characters.
+- `401 UNAUTHENTICATED` (`UNAUTHENTICATED`): Missing or invalid Bearer access token.
 
 ---
 
-# 18. DELETE `/documents/{documentId}`
+# 18. DELETE `/api/v1/documents/{documentId}` (Frozen - DOC-001)
 
-Delete a document.
+Hard delete a document.
 
-Initial permission:
+Required permission: `OWNER` only.
 
-```text
-OWNER only
-```
-
-### Success
+### Success Response
 
 ```http
-204 No Content
+HTTP/1.1 204 No Content
 ```
 
-Deletion should remove or cascade associated:
+Deletion behavior:
+- Hard deletes the `documents` row and cascades deletion to all associated `document_permissions`, `document_snapshots`, and `document_operation_batches`.
+- Active WebSocket connections for the deleted document are closed immediately upon commit.
 
-* permissions
-* operation history
-* snapshots
-* versions
+### Error Responses
 
-according to `docs/DATABASE.md`.
-
-Protocol v1 uses hard deletion. The response is sent only after the database transaction commits; active sockets for the deleted document are then closed.
-
-### Errors
-
-```text
-DOCUMENT_NOT_FOUND
-DOCUMENT_FORBIDDEN
-```
+- `404 NOT_FOUND` (`DOCUMENT_NOT_FOUND`): Document does not exist or requesting user has no access.
+- `403 FORBIDDEN` (`DOCUMENT_FORBIDDEN`): Requesting user is an `EDITOR` (not `OWNER`).
+- `401 UNAUTHENTICATED` (`UNAUTHENTICATED`): Missing or invalid Bearer access token.
 
 ---
 
-# 19. Sharing Permission Representation
+# 19. Sharing Permission Representation (Frozen - DOC-001)
+
+Represented in document permission endpoints.
 
 ```json
 {
@@ -552,27 +591,23 @@ DOCUMENT_FORBIDDEN
 ```
 
 Supported initial roles:
-
-```text
-OWNER
-EDITOR
-```
-
-`OWNER` is represented by document ownership rather than a normal editable permission row.
+- `EDITOR`: Full collaborative edit and title edit rights.
+- Note: Document `OWNER` is represented on the document object itself rather than a separate permission row.
 
 ---
 
-# 20. GET `/documents/{documentId}/permissions`
+# 20. GET `/api/v1/documents/{documentId}/permissions` (Frozen - DOC-001)
 
-List document permissions.
+List users granted access to a document.
 
-Initial permission:
+Required permission: `OWNER` only.
 
-```text
-OWNER only
+### Success Response
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
 ```
-
-### Success
 
 ```json
 {
@@ -595,28 +630,23 @@ OWNER only
 }
 ```
 
-### Errors
+### Error Responses
 
-```text
-DOCUMENT_NOT_FOUND
-DOCUMENT_FORBIDDEN
-```
+- `404 NOT_FOUND` (`DOCUMENT_NOT_FOUND`): Document does not exist or user has no access.
+- `403 FORBIDDEN` (`DOCUMENT_FORBIDDEN`): Requesting user is an `EDITOR` (only `OWNER` can view permission lists).
+- `401 UNAUTHENTICATED` (`UNAUTHENTICATED`): Missing or invalid Bearer access token.
 
 ---
 
-# 21. POST `/documents/{documentId}/permissions`
+# 21. POST `/api/v1/documents/{documentId}/permissions` (Frozen - DOC-001)
 
-Share a document.
+Grant document access to another user.
 
-Initial permission:
+Required permission: `OWNER` only.
 
-```text
-OWNER only
-```
+### Request Body
 
-### Request
-
-A user may be identified by username or email.
+Target user may be identified by username or email.
 
 ```json
 {
@@ -625,10 +655,15 @@ A user may be identified by username or email.
 }
 ```
 
-### Success
+Validation constraints:
+- `userIdentifier`: Required non-blank string. Trimming applied.
+- `role`: Must be `"EDITOR"`.
+
+### Success Response
 
 ```http
-201 Created
+HTTP/1.1 201 Created
+Content-Type: application/json
 ```
 
 ```json
@@ -643,42 +678,39 @@ A user may be identified by username or email.
 }
 ```
 
-### Errors
+### Error Responses
 
-```text
-DOCUMENT_FORBIDDEN
-USER_NOT_FOUND
-ALREADY_HAS_ACCESS
-INVALID_PERMISSION
-```
+- `404 NOT_FOUND` (`DOCUMENT_NOT_FOUND`): Document does not exist or requesting user is not owner/editor.
+- `403 FORBIDDEN` (`DOCUMENT_FORBIDDEN`): Requesting user is an `EDITOR` (only `OWNER` can grant access).
+- `422 UNPROCESSABLE_ENTITY` (`USER_NOT_FOUND`): Target `userIdentifier` does not correspond to any registered user.
+- `409 CONFLICT` (`ALREADY_HAS_ACCESS`): Target user is already the document owner or an existing editor.
+- `422 UNPROCESSABLE_ENTITY` (`INVALID_ROLE`): Provided role is not `"EDITOR"`.
+- `401 UNAUTHENTICATED` (`UNAUTHENTICATED`): Missing or invalid Bearer access token.
 
 ---
 
-# 22. DELETE `/documents/{documentId}/permissions/{userId}`
+# 22. DELETE `/api/v1/documents/{documentId}/permissions/{userId}` (Frozen - DOC-001)
 
-Remove a user's access.
+Revoke document access from a user.
 
-Initial permission:
+Required permission: `OWNER` only.
 
-```text
-OWNER only
-```
-
-### Success
+### Success Response
 
 ```http
-204 No Content
+HTTP/1.1 204 No Content
 ```
 
-If the removed user currently has the document open, active collaboration sockets for that user must be invalidated or disconnected promptly.
+Revocation behavior:
+- Hard deletes the `document_permissions` record for `userId`.
+- If the revoked user currently has an active WebSocket session open, that session is invalidated promptly.
 
-### Errors
+### Error Responses
 
-```text
-DOCUMENT_NOT_FOUND
-DOCUMENT_FORBIDDEN
-PERMISSION_NOT_FOUND
-```
+- `404 NOT_FOUND` (`DOCUMENT_NOT_FOUND`): Document does not exist or requesting user is not owner/editor.
+- `403 FORBIDDEN` (`DOCUMENT_FORBIDDEN`): Requesting user is an `EDITOR` (only `OWNER` can revoke access).
+- `404 NOT_FOUND` (`PERMISSION_NOT_FOUND`): Target `userId` does not have an active permission record on this document.
+- `401 UNAUTHENTICATED` (`UNAUTHENTICATED`): Missing or invalid Bearer access token.
 
 ---
 

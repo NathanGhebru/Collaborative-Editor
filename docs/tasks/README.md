@@ -6,10 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 2 — Authentication implementation complete
-- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete
+- Current phase: Phase 3 — Document specification complete
+- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen
 - Measured benchmarks: none
-- Next task: `DOC-001` (Freeze document API and schema limits)
+- Next task: `DOC-002` (Implement document and sharing backend) / `DOC-003` (Implement document and sharing UI)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -202,11 +202,20 @@ Phase exit: a browser can register, log in, refresh, access a protected route, a
 
 ### DOC-001: Freeze document API and schema limits
 
-**Status:** Not Started  
+**Status:** Complete
+
 **Depends on:** `AUTH-001`  
 **Parallel safe:** No
 
-Finalize document/title/content/version-label limits, pagination cursors, schema types/constraints, and initial-snapshot transaction behavior.
+Requirements:
+
+- finalize document/title/content/version-label limits, pagination cursors, schema types/constraints, and initial-snapshot transaction behavior.
+
+Verification:
+
+- `./scripts/validate-docs.sh` passes; reviewed endpoint/schema/permission matrix verified.
+
+Verification note (2026-08-29): Document summary/detail representations, CRUD endpoints (`POST`, `GET`, `PATCH`, `DELETE` `/api/v1/documents`), sharing endpoints (`GET`, `POST`, `DELETE` `/api/v1/documents/{id}/permissions`), title validation regex (`^[^\r\n]{1,255}$`), content size limit (1MB / 1,000,000 UTF-16 code units), cursor pagination (`updatedAt DESC, id DESC`), unauthorized resource concealment policy (`404 DOCUMENT_NOT_FOUND`), and error codes frozen in `docs/API.md` Sections 12–22. Database schema for `documents`, atomic revision-0 `document_snapshots`, `document_permissions` table, indexes, foreign keys, cascade rules, and Flyway migration location `V2__init_document_schema.sql` frozen in `docs/DATABASE.md` Sections 6–8. `./scripts/validate-docs.sh` verified.
 
 ### DOC-002: Implement document and sharing backend
 
