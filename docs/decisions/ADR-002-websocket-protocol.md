@@ -215,16 +215,10 @@ single-use
 document-scoped
 user-scoped
 permission-scoped
-short-lived
+short-lived (`TTL = 60s`)
 ```
 
-Initial lifetime target:
-
-```text
-30–60 seconds
-```
-
-Tickets are stored temporarily in Redis.
+Tickets are stored temporarily in Redis as `rt_ticket:{ticketId}` mapped to JSON `{ userId, documentId, role, createdAt }` and atomically consumed/deleted upon WebSocket handshake (`GETDEL`).
 
 ---
 

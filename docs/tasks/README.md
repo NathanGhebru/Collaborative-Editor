@@ -370,11 +370,13 @@ Verification note (2026-08-30): Integrated Antigravity's production sequencing p
 
 ### RT-001: Freeze remaining public protocol details
 
-**Status:** Not Started  
+**Status:** Complete  
 **Depends on:** `OT-001`  
 **Parallel safe:** No
 
 Finalize numeric close codes, reconnect categories, concrete frame/operation/document/pending/rate limits, and all event requirements. Freeze `REALTIME_PROTOCOL.md` before implementation.
+
+Verification note (2026-08-30): Frozen public real-time collaboration protocol v1. Finalized REST ticket acquisition DTO (`POST /api/v1/documents/{documentId}/realtime-ticket`), 60s TTL, atomic Redis single-use consumption (`GETDEL`), and query param `?ticket=<ticket>`. Defined UTF-8 JSON text framing, common envelope fields (`protocolVersion: 1`, `type`, `messageId`, `documentId`, `syncEpoch`, `timestamp`), client.hello $\rightarrow$ catch-up `server.operations` $\rightarrow$ `presence.snapshot` $\rightarrow$ `server.ready` connection handshake, Dual-Ack delivery (`server.operations` broadcast to all subscribers + `server.operation_ack` to origin socket), rejection of client `GROUP`/`NO_OP`, surrogate-pair UTF-16 position bounds (`INVALID_POSITION`), numeric WebSocket close codes (RFC 6455 range 4000–4009), structured error envelopes (`server.error` and `server.operation_rejected`), explicit limits (64 KB max frame, 10,000 code units max insert, 1,000,000 code units max document size, 20 updates/sec max cursor rate), and created `docs/realtime-protocol-fixtures.json`. Verified via `./scripts/validate-docs.sh` and python JSON fixture validation.
 
 ### RT-002: Implement tickets and WebSocket collaboration
 

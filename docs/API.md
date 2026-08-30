@@ -714,41 +714,49 @@ Revocation behavior:
 
 ---
 
-# 23. POST `/documents/{documentId}/realtime-ticket`
+# 23. POST `/api/v1/documents/{documentId}/realtime-ticket` (Frozen - RT-001)
 
-Create a short-lived single-use ticket for opening a document WebSocket.
+Create a short-lived single-use ticket for opening a document WebSocket connection.
 
-The endpoint verifies that the user currently has edit permission.
+Required permission: `OWNER` or `EDITOR`.
 
 ### Request
 
-No body required.
+```http
+POST /api/v1/documents/f3481704-6158-4eb9-af12-a2865d962edd/realtime-ticket
+Authorization: Bearer <access-token>
+Content-Type: application/json
+```
 
-### Success
+No JSON body required (`{}` or empty request body).
+
+### Success Response
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
+```
 
 ```json
 {
-  "ticket": "rt_6DH3...short-lived-secret",
-  "expiresAt": "2026-08-28T08:20:30Z",
+  "ticket": "rt_6DH39fA28xKq1z9P0mL4vN7yW2rT5uI8",
+  "expiresAt": "2026-08-30T12:20:00Z",
   "websocketPath": "/ws/v1/documents/f3481704-6158-4eb9-af12-a2865d962edd"
 }
 ```
 
-Recommended ticket lifetime:
+Ticket rules & lifecycle:
+- `ticket`: Cryptographically secure random token string prefixed with `rt_`.
+- `expiresAt`: ISO 8601 UTC timestamp exactly 60 seconds from creation (`TTL = 60s`).
+- `websocketPath`: Canonical WebSocket URL path `/ws/v1/documents/{documentId}`.
+- Single-use consumption: Stored in Redis as `rt_ticket:{ticketId}` mapped to JSON `{ userId, documentId, role, createdAt }`. Atomically deleted upon WebSocket handshake verification.
+- Re-use or expiration attempt results in `401 Unauthorized` / WS close code `4001` (`UNAUTHORIZED`).
 
-```text
-30–60 seconds
-```
+### Error Responses
 
-The ticket is invalidated after successful use.
-
-### Errors
-
-```text
-DOCUMENT_NOT_FOUND
-DOCUMENT_FORBIDDEN
-REALTIME_UNAVAILABLE
-```
+- `404 NOT_FOUND` (`DOCUMENT_NOT_FOUND`): Document does not exist OR requesting user has no access (Concealment policy).
+- `401 UNAUTHENTICATED` (`UNAUTHENTICATED`): Missing or invalid Bearer access token.
+- `503 SERVICE_UNAVAILABLE` (`REALTIME_UNAVAILABLE`): Realtime coordination subsystem (Redis) unavailable.
 
 ---
 

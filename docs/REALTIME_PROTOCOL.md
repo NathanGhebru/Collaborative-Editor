@@ -2,12 +2,12 @@
 
 ## Status
 
-**Status:** Reviewed draft; not frozen
-**Protocol version:** `1`
-**Transport:** WebSocket
-**Synchronization:** Server-authoritative Operational Transformation
+**Status:** Frozen (RT-001)  
+**Protocol version:** `1`  
+**Transport:** WebSocket  
+**Synchronization:** Server-authoritative Operational Transformation  
 
-This document defines the canonical browser-to-server collaboration semantics. Redis-internal routing is a separate internal contract governed by ADR-004 and is not part of the public WebSocket protocol.
+This document defines the canonical browser-to-server collaboration semantics for protocol v1. Redis-internal routing is a separate internal contract governed by ADR-004 and is not part of the public WebSocket protocol.
 
 Once frozen, neither frontend nor backend implementation may independently reinterpret this protocol.
 
@@ -37,28 +37,28 @@ POST /api/v1/documents/{documentId}/realtime-ticket
 
 A real-time ticket is:
 
-* short-lived,
-* single-use,
-* user-scoped,
-* document-scoped,
-* permission-scoped.
+* short-lived (`TTL = 60s`),
+* single-use (atomically deleted from Redis on handshake via `GETDEL`),
+* user-scoped (`userId`),
+* document-scoped (`documentId`),
+* permission-scoped (`OWNER` or `EDITOR`).
 
 The server rejects:
 
 * expired tickets,
 * already-used tickets,
 * tickets for another document,
-* revoked permissions.
+* tickets from users with revoked document permissions.
 
-Successful handshake consumes the ticket.
+Rejection during handshake returns HTTP `401 Unauthorized` / WS close code `4001` (`UNAUTHORIZED`). Successful handshake consumes the ticket.
 
-The path document is the authorized room. If a later message contains a `documentId`, it must equal the path document or the server treats the message as a protocol violation; a client cannot switch rooms on an existing socket.
+The path document is the authorized room. If a message envelope contains a `documentId`, it must equal the path document or the server treats the message as a protocol violation and closes the socket; a client cannot switch rooms on an existing socket.
 
 ---
 
 # 3. Message Encoding
 
-Protocol v1 uses JSON text frames.
+Protocol v1 uses UTF-8 JSON text frames exclusively. Binary frames are rejected with WS close code `4003` (`UNSUPPORTED_DATA`).
 
 All application messages contain:
 
@@ -66,30 +66,32 @@ All application messages contain:
 {
   "protocolVersion": 1,
   "type": "message.type",
-  "messageId": "uuid"
+  "messageId": "2037cead-f834-46ab-a557-478a24027067",
+  "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
+  "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
+  "timestamp": "2026-08-30T12:15:00.000Z",
+  "payload": {}
 }
 ```
 
-Future performance work may introduce binary framing, but binary framing requires a separate protocol version or backward-compatible negotiation.
+Unknown fields in JSON envelopes are ignored by parsers (forward compatibility rule).
 
 ---
 
 # 4. Common Fields
 
-Where applicable messages include:
+Where applicable, messages contain:
 
-```text
-protocolVersion
-type
-messageId
-documentId
-syncEpoch
-revision
-clientId
-connectionId
-timestamp
-payload
-```
+| Field | Type | Description |
+| --- | --- | --- |
+| `protocolVersion` | integer | Fixed at `1` for protocol v1 |
+| `type` | string | Message event type discriminator |
+| `messageId` | string (UUID v4) | Transport correlation ID for diagnostics/logging |
+| `documentId` | string (UUID v4) | Target document UUID |
+| `syncEpoch` | string (UUID v4) | Synchronization epoch UUID |
+| `clientId` | string (UUID v4) | Originating browser client UUID |
+| `timestamp` | string (ISO 8601 UTC) | Message creation timestamp |
+| `payload` | object | Message-specific payload DTO |
 
 ---
 
@@ -559,9 +561,9 @@ The server returns the previously assigned canonical result.
 
 ---
 
-# 24. Operation Rejection
+# 24. Operation Rejection & Error Messages
 
-Invalid edits receive:
+When an edit operation is invalid, the server sends `server.operation_rejected` on that client's socket. The connection remains OPEN.
 
 ```json
 {
@@ -569,33 +571,71 @@ Invalid edits receive:
   "type": "server.operation_rejected",
   "messageId": "1f547a58-f530-46b3-b550-a8fe9072417f",
   "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
+  "syncEpoch": "a165202b-bac1-431e-9aee-4a6524211454",
+  "timestamp": "2026-08-30T12:15:00.052Z",
   "payload": {
     "clientOperationId": "a21acdd4-2248-485d-ac37-5cbbfdc13ccb",
     "code": "INVALID_POSITION",
-    "message": "Insert position exceeds the current document length."
+    "message": "Insert position 150 exceeds current document length 100."
   }
 }
 ```
 
----
+When a protocol or connection-level error occurs, the server sends `server.error`:
 
-# 25. Operation Rejection Codes
-
-```text
-INVALID_OPERATION
-INVALID_POSITION
-INVALID_LENGTH
-INSERT_TOO_LARGE
-DOCUMENT_TOO_LARGE
-EPOCH_MISMATCH
-REVISION_AHEAD
-TOO_MANY_PENDING_OPERATIONS
-RATE_LIMITED
-DOCUMENT_FORBIDDEN
-SERVER_RECOVERING
+```json
+{
+  "protocolVersion": 1,
+  "type": "server.error",
+  "messageId": "8f12ce43-9821-4b12-a42e-1178a9c40211",
+  "documentId": "f3481704-6158-4eb9-af12-a2865d962edd",
+  "timestamp": "2026-08-30T12:15:00.053Z",
+  "payload": {
+    "code": "UNAUTHENTICATED",
+    "message": "Realtime ticket has expired or is invalid.",
+    "fatal": true,
+    "closeCode": 4001
+  }
+}
 ```
 
-Some rejection types require full resynchronization.
+If `fatal` is `true`, the server closes the WebSocket immediately after sending `server.error`.
+
+---
+
+# 25. Error & Close Code Specification
+
+### 25.1 Rejection & Error Codes
+
+| Code | Level | Fatal | Socket Action | Client Action |
+| --- | --- | --- | --- | --- |
+| `UNAUTHENTICATED` | Protocol | Yes | Close `4001` | Obtain new ticket & reconnect |
+| `DOCUMENT_FORBIDDEN` | Protocol | Yes | Close `4001` | Stop; show permission error |
+| `INVALID_MESSAGE` | Protocol | Yes/No | Close `4000` if frame | Discard message or fix envelope |
+| `UNSUPPORTED_PROTOCOL_VERSION` | Protocol | Yes | Close `4002` | Stop; update client |
+| `INVALID_OPERATION` | Operation | No | Keep Open | Drop operation; notify user |
+| `INVALID_POSITION` | Operation | No | Keep Open | Drop operation |
+| `INVALID_LENGTH` | Operation | No | Keep Open | Drop operation |
+| `INSERT_TOO_LARGE` | Operation | No | Keep Open | Drop operation |
+| `DOCUMENT_TOO_LARGE` | Operation | No | Keep Open | Drop operation |
+| `IDENTITY_CONFLICT` | Operation | No | Keep Open | Drop operation (different payload reuse) |
+| `EPOCH_MISMATCH` | Synchronization | No | Send `server.resync_required` | Reload REST snapshot & resync |
+| `REVISION_AHEAD` | Synchronization | No | Send `server.resync_required` | Reload REST snapshot & resync |
+| `RATE_LIMIT_EXCEEDED` | Protocol | Yes | Close `4008` | Backoff & reconnect |
+| `DOCUMENT_NOT_FOUND` | Protocol | Yes | Close `4003` | Stop; notify user |
+| `INTERNAL_ERROR` | System | No | Keep Open | Retry operation |
+
+### 25.2 Numeric WebSocket Close Codes (RFC 6455 Range 4000–4999)
+
+| Close Code | Constant | Meaning | Reconnect Category |
+| ---: | --- | --- | --- |
+| `4000` | `BAD_REQUEST` | Malformed message frame or envelope | Non-retryable |
+| `4001` | `UNAUTHORIZED` | Invalid/expired ticket or permission revoked | Re-authenticate via REST |
+| `4002` | `UNSUPPORTED_PROTOCOL_VERSION` | Client `protocolVersion != 1` | Non-retryable |
+| `4003` | `DOCUMENT_DELETED` | Target document hard deleted | Non-retryable |
+| `4004` | `SESSION_SUPERSEDED` | Connection replaced by newer session | Non-retryable |
+| `4008` | `RATE_LIMIT_EXCEEDED` | Exceeded message or connection rate limit | Backoff reconnect |
+| `4009` | `PAYLOAD_TOO_LARGE` | Frame or operation exceeded max bounds | Non-retryable |
 
 ---
 
@@ -968,38 +1008,32 @@ Correctness takes priority over pretending an edit was saved.
 
 # 45. Protocol Limits
 
-The server should enforce configurable limits including:
+The server enforces the following protocol-v1 bounds:
 
-```text
-maximum message size
-maximum insert length
-maximum operation group size
-maximum pending operations/client
-maximum operations/sec/client
-maximum document size
-maximum cursor update rate
-```
-
-Exceeding limits may produce a rejection or connection closure.
+| Limit Parameter | Frozen Bound | Exceeded Action |
+| --- | --- | --- |
+| Max WebSocket Frame Size | 65,536 bytes (64 KB) | WS Close `4009` (`PAYLOAD_TOO_LARGE`) |
+| Max Single Insert Length | 10,000 UTF-16 code units | `server.operation_rejected` (`INSERT_TOO_LARGE`) |
+| Max Document Size | 1,000,000 UTF-16 code units (1 MB) | `server.operation_rejected` (`DOCUMENT_TOO_LARGE`) |
+| Max Client Pending Queue | 1 in-flight + local sequential buffer | Client throttle |
+| Max Cursor Update Rate | 20 updates/sec/connection | Ephemeral cursor drop |
+| Ticket Expiration TTL | 60 seconds | REST/WS HTTP `401` / Close `4001` |
 
 ---
 
 # 46. Protocol Close Conditions
 
-The server may close the connection for:
+The server closes the WebSocket for:
 
-```text
-invalid ticket
-authentication failure
-permission revocation
-repeated malformed messages
-protocol version mismatch
-rate-limit abuse
-oversized frames
-server shutdown
-```
+* `4000` (`BAD_REQUEST`): Malformed JSON frame, missing envelope fields, or invalid structure.
+* `4001` (`UNAUTHORIZED`): Expired/invalid ticket, ticket reuse, or user document permission revoked.
+* `4002` (`UNSUPPORTED_PROTOCOL_VERSION`): Requested `protocolVersion != 1`.
+* `4003` (`DOCUMENT_DELETED`): Document hard deleted via REST.
+* `4004` (`SESSION_SUPERSEDED`): Connection replaced by a newer session for the same client.
+* `4008` (`RATE_LIMIT_EXCEEDED`): Repeated rate limit or frame rate abuse.
+* `4009` (`PAYLOAD_TOO_LARGE`): Frame size > 64 KB.
 
-Clients should distinguish recoverable closes from authorization failures.
+Clients must distinguish recoverable closes (e.g. transient disconnects) from authorization failures (`4001`) which require re-authenticating via REST.
 
 ---
 
@@ -1007,7 +1041,7 @@ Clients should distinguish recoverable closes from authorization failures.
 
 The protocol must preserve:
 
-1. Operations have stable identities.
+1. Operations have stable identities (`documentId + syncEpoch + clientId + clientOperationId`).
 2. Retries do not duplicate edits.
 3. Canonical revisions are strictly ordered.
 4. Wrong-epoch operations are never accepted.
@@ -1022,14 +1056,19 @@ The protocol must preserve:
 
 # 48. Protocol Status and Open Decisions
 
-The OT core synchronization blockers are resolved under **OT-001**:
+The OT core synchronization blockers were resolved under **OT-001**:
 1. **Multiple pending local operations:** Frozen to single in-flight operation + local sequential buffer model with progressive rebase (Section 31; ADR-001 Sections 23–24).
 2. **Composite GROUP transformation:** Frozen to sequential execution semantics with client-authored GROUP deferred for v1 and server-emitted split DELETEs fully specified (Sections 17, 29; ADR-001 Section 21).
 
-The remaining protocol decisions are assigned to downstream roadmap tasks:
-3. Preservation and user recovery of unacknowledged intent across epoch changes (version restore): Assigned to `HIST-001`.
-4. Numeric WebSocket close-code mapping and reconnect category rules: Assigned to `RT-001`.
-5. Exact configurable frame, operation, document, pending-queue, and rate limits: Assigned to `RT-001`.
+The public real-time protocol blockers are resolved under **RT-001**:
+3. **WebSocket Ticket & Auth Flow:** Frozen to REST ticket acquisition (`POST /api/v1/documents/{documentId}/realtime-ticket`), 60s TTL, single-use Redis deletion (`GETDEL`), and ticket query parameter `?ticket=<ticket>` (Section 2; ADR-002 Section 9–10).
+4. **Numeric WebSocket Close Codes & Reconnect Categories:** Frozen to application range 4000–4009 with explicit non-retryable vs re-authenticate classifications (Section 25.2).
+5. **Exact Message Envelopes & Dual-Ack Delivery:** Frozen to `client.operation` $\rightarrow$ `server.operations` broadcast to all subscribers + `server.operation_ack` to origin client socket (Sections 11, 14, 22).
+6. **Configurable Frame & Size Limits:** Frozen to 64 KB max frame size, 10,000 UTF-16 code units max insert, and 1,000,000 UTF-16 code units max document size (Section 45).
+7. **Machine-Readable Fixtures:** Frozen in `docs/realtime-protocol-fixtures.json`.
+
+Downstream roadmap task assignments:
+- Preservation and user recovery of unacknowledged intent across epoch changes (version restore): Assigned to `HIST-001`.
 
 ---
 
