@@ -751,6 +751,7 @@ Ticket rules & lifecycle:
 - `websocketPath`: Canonical WebSocket URL path `/ws/v1/documents/{documentId}`.
 - Single-use consumption: Atomically invalidated upon WebSocket upgrade.
 - Re-use, expiration, or invalid ticket attempt results in HTTP `401 Unauthorized` during the WebSocket handshake.
+- Log Redaction: Application servers, reverse proxies (Nginx/ALB), and API gateways MUST redact or omit `ticket` query parameters from HTTP access logs to limit replay exposure. Long-lived Bearer access tokens MUST NEVER be passed in WebSocket query parameters.
 
 ### Error Responses
 

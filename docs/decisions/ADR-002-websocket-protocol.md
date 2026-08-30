@@ -232,6 +232,8 @@ A single-use ticket avoids:
 * persisting reusable credentials in server logs,
 * custom cookie dependence for the WebSocket handshake.
 
+Application servers, reverse proxies (Nginx/ALB), and API gateways MUST redact or omit `ticket` query parameters from HTTP access logs to limit replay exposure after single-use invalidation. Long-lived Bearer access tokens MUST NEVER be passed in WebSocket URL query parameters under any circumstances.
+
 ---
 
 # 12. Message Envelope
