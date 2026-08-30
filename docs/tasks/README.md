@@ -6,13 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 5 — OT core specification frozen
-- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen
-- Current phase: Phase 5 — OT core implementation in progress
-- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen; OT-002 Java server OT engine complete
+- Current phase: Phase 5 — OT core complete
+- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen; OT-002 Java and TypeScript OT engines complete and verified
 - Measured benchmarks: none
-- Next task: `OT-002` (Implement primitive OT modules and shared vectors)
-- Current task: `OT-002` (Implement primitive OT modules and shared vectors — Java complete, TypeScript in parallel)
+- Next task: `PERS-001` (Implement canonical operation persistence)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -310,8 +307,7 @@ Verification note (2026-08-30): Single in-flight + sequential local buffer clien
 
 ### OT-002: Implement primitive OT modules and shared vectors
 
-**Status:** Not Started  
-**Status:** In Progress  
+**Status:** Complete  
 **Depends on:** `OT-001`  
 **Parallel safe:** Java and TypeScript implementations may proceed in parallel against immutable shared vectors.
 
@@ -325,7 +321,7 @@ Verification:
 ./scripts/test-frontend.sh
 ```
 
-Verification note (2026-08-30): Java server-side OT implementation complete. Implemented UTF-16 code unit `INSERT`, `DELETE`, `NO_OP`, and sequential `GROUP` operations, strict UTF-16 surrogate bisection validation (`OperationValidator`), pairwise and group transformation formulas (`OtEngine`), document application (`DocumentApplier`), and client queue rebase utilities (`ClientRebaseUtils`). All 23 canonical test vectors in `docs/ot-test-vectors.json`, 2,000 deterministic seeded property iterations, and 3/10/50-client concurrency simulations pass in `./scripts/test-ot.sh` and `./scripts/test-backend.sh`. TypeScript client implementation proceeding in parallel.
+Verification note (2026-08-30): Fully integrated and verified both Java (`antigravity/ot-002-server`) and TypeScript (`codex/ot-002-client`) OT cores against the frozen OT-001 specification and `docs/ot-test-vectors.json`. All 23 canonical test vectors pass identically in both languages (transform A, transform B, A then B', B then A', and document convergence, plus three-step pending queue rebase). Validated UTF-16 code units, surrogate-pair bisection protection, same-position tie-breaking by lowercase UUID `OperationKey`, insert-wins delete splitting, group flattening, TP1 property/invariant suites, and 3/10/50-client convergence simulations. Unified `./scripts/test-ot.sh` to test both backend and frontend suites. All 98 backend tests, 71 frontend tests, and 10 Playwright E2E tests pass cleanly.
 
 Phase exit: both languages pass the same vectors and convergence simulations without networking.
 

@@ -233,17 +233,17 @@ The diagram intentionally shows both accepted edge-routing variants. Whether API
 
 ## 17. Open decisions and implementation gates
 
-The accepted ADRs do not conflict on their selected high-level architecture. The following details remain unresolved and must not be guessed during implementation:
+The accepted ADRs do not conflict on their selected high-level architecture. Open implementation gates and previously resolved decisions:
 
-| Decision | Why it matters | Must be resolved before |
+| Decision | Status / Resolution | Canonical Reference |
 | --- | --- | --- |
-| Causal model for more than one pending client edit | A later local edit may be positioned relative to an earlier unacknowledged edit; `baseRevision` alone does not express that dependency | OT client/server integration and protocol freeze |
-| Complete composite transformation rules, including group-vs-group | Insert-wins can produce a composite canonical delete even from a primitive client operation; ADR-001 does not yet define every composition | Any OT implementation that handles the accepted delete/insert policy |
-| Recovery of unacknowledged local intent after an epoch-changing restore | Old-epoch operations cannot be replayed as ordinary operations, while the product forbids silent loss | Version restore with connected/offline editors |
-| Authentication and HTTP validation contract | Account normalization, field limits, token format, cursor encoding, and rate-limit details remain open in `API.md` | Authentication/document endpoint freeze |
-| Exact PostgreSQL schema details | Lengths, enum/check strategy, migration tool, operation JSON version, hash encoding, and some range constraints remain open in `DATABASE.md` | Each affected migration |
-| External AWS edge routing | CloudFront-to-ALB behaviors and direct API/WS hostname have different operational tradeoffs | Infrastructure implementation |
-| Infrastructure-as-code tool | ADR-005 recommends Terraform but does not freeze it | AWS implementation |
+| Causal model for multiple pending client edits | **Resolved (OT-001)**: Single in-flight operation model with sequential local pending buffer and deterministic three-step rebase | `ADR-001` §23, §24, §38.1; `docs/ot-test-vectors.json` |
+| Complete composite transformation rules (`GROUP`) | **Resolved (OT-001)**: Insert-wins composite decomposition and pairwise cross-transformation rules frozen | `ADR-001` §21, §38.2; `docs/ot-test-vectors.json` |
+| Authentication and HTTP validation contract | **Resolved (AUTH-001 / DOC-001)**: Token format, session handling, account normalization, and REST endpoints frozen | `docs/API.md`; `docs/decisions/` |
+| Recovery of unacknowledged local intent after an epoch-changing restore | Deferred to version restore task: client retains unacknowledged text in memory, alerts user, prevents silent loss | `docs/REALTIME_PROTOCOL.md`; `docs/tasks/README.md` (HIST-001) |
+| Exact PostgreSQL schema details | Resolved per migration task: lengths, enum/check constraints, JSON format frozen in DATABASE.md and migrations | `docs/DATABASE.md`; `PERS-001`+ |
+| External AWS edge routing | Unresolved until infrastructure validation: CloudFront-to-ALB vs direct API/WS hostname | `ADR-005`; Infrastructure tasks |
+| Infrastructure-as-code tool | Recommended Terraform, frozen during AWS phase | `ADR-005`; AWS tasks |
 
 Configurable thresholds—batch delay, snapshot interval, cursor rate, document size, history window, connection limits, and autoscaling thresholds—are intentionally deferred to implementation and benchmark tasks. They are not missing architectural choices.
 

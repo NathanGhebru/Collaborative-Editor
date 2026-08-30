@@ -6,7 +6,7 @@
 **Reviewer:** Antigravity
 **Scope:** Synchronization algorithm, operation semantics, ordering, convergence, and client/server authority. Wire payloads belong in `docs/REALTIME_PROTOCOL.md`.
 
-The accepted decision selects the synchronization family, authority model, primitive text semantics, ordering, durability boundary, and epoch model. The open correctness details in Section 38 must be resolved before the affected protocol behavior is frozen.
+The accepted decision selects the synchronization family, authority model, primitive text semantics, ordering, durability boundary, and epoch model. Correctness details were frozen under OT-001 in Section 38 and `docs/ot-test-vectors.json`.
 
 ---
 
