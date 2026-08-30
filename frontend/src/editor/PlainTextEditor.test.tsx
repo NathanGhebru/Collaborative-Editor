@@ -58,6 +58,13 @@ describe("extractOperations UTF-16 diffing", () => {
       { kind: "INSERT", position: 9, text: " launch!" },
     ]);
   });
+
+  it("expands an emoji replacement so extracted operations never split a surrogate pair", () => {
+    expect(extractOperations("A😀B", "A😁B")).toEqual([
+      { kind: "DELETE", position: 1, length: 2 },
+      { kind: "INSERT", position: 1, text: "😁" },
+    ]);
+  });
 });
 
 describe("useLocalEditor hook", () => {

@@ -1,4 +1,5 @@
 import type { TextOperation } from "./types";
+import { isUtf16Boundary } from "../ot/utf16";
 
 /**
  * Extracts UTF-16 text operations (INSERT / DELETE) by comparing oldText and newText.
@@ -19,6 +20,9 @@ export function extractOperations(oldText: string, newText: string): TextOperati
   while (p < minLen && oldText.charCodeAt(p) === newText.charCodeAt(p)) {
     p++;
   }
+  while (p > 0 && (!isUtf16Boundary(oldText, p) || !isUtf16Boundary(newText, p))) {
+    p--;
+  }
 
   let s = 0;
   const maxSuffix = Math.min(oldText.length - p, newText.length - p);
@@ -27,6 +31,15 @@ export function extractOperations(oldText: string, newText: string): TextOperati
     oldText.charCodeAt(oldText.length - 1 - s) === newText.charCodeAt(newText.length - 1 - s)
   ) {
     s++;
+  }
+  while (
+    s > 0
+    && (
+      !isUtf16Boundary(oldText, oldText.length - s)
+      || !isUtf16Boundary(newText, newText.length - s)
+    )
+  ) {
+    s--;
   }
 
   const ops: TextOperation[] = [];

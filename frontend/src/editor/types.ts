@@ -1,16 +1,8 @@
-export interface InsertOperation {
-  kind: "INSERT";
-  position: number;
-  text: string;
-}
+import type { PrimitiveOperation } from "../ot/types";
 
-export interface DeleteOperation {
-  kind: "DELETE";
-  position: number;
-  length: number;
-}
+export type { DeleteOperation, InsertOperation } from "../ot/types";
 
-export type TextOperation = InsertOperation | DeleteOperation;
+export type TextOperation = PrimitiveOperation;
 
 export interface SelectionState {
   start: number;
