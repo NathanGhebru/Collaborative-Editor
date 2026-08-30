@@ -8,8 +8,11 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 - Current phase: Phase 5 — OT core specification frozen
 - Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen
+- Current phase: Phase 5 — OT core implementation in progress
+- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen; OT-002 Java server OT engine complete
 - Measured benchmarks: none
 - Next task: `OT-002` (Implement primitive OT modules and shared vectors)
+- Current task: `OT-002` (Implement primitive OT modules and shared vectors — Java complete, TypeScript in parallel)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -308,6 +311,7 @@ Verification note (2026-08-30): Single in-flight + sequential local buffer clien
 ### OT-002: Implement primitive OT modules and shared vectors
 
 **Status:** Not Started  
+**Status:** In Progress  
 **Depends on:** `OT-001`  
 **Parallel safe:** Java and TypeScript implementations may proceed in parallel against immutable shared vectors.
 
@@ -320,6 +324,8 @@ Verification:
 ./scripts/test-backend.sh
 ./scripts/test-frontend.sh
 ```
+
+Verification note (2026-08-30): Java server-side OT implementation complete. Implemented UTF-16 code unit `INSERT`, `DELETE`, `NO_OP`, and sequential `GROUP` operations, strict UTF-16 surrogate bisection validation (`OperationValidator`), pairwise and group transformation formulas (`OtEngine`), document application (`DocumentApplier`), and client queue rebase utilities (`ClientRebaseUtils`). All 23 canonical test vectors in `docs/ot-test-vectors.json`, 2,000 deterministic seeded property iterations, and 3/10/50-client concurrency simulations pass in `./scripts/test-ot.sh` and `./scripts/test-backend.sh`. TypeScript client implementation proceeding in parallel.
 
 Phase exit: both languages pass the same vectors and convergence simulations without networking.
 
