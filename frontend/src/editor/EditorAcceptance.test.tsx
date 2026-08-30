@@ -1,6 +1,17 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
+import { ReadyRealtimeWebSocket } from "../testSupport/ReadyRealtimeWebSocket";
+
+vi.mock("../realtime/ticketApi", () => ({
+  realtimeTicketApi: () => ({
+    create: vi.fn(async (documentId: string) => ({
+      ticket: "rt_editor_acceptance",
+      expiresAt: "2026-08-30T12:16:00Z",
+      websocketPath: `/ws/v1/documents/${documentId}`,
+    })),
+  }),
+}));
 
 const user = {
   id: "user-1",
@@ -63,6 +74,7 @@ function replaceEditorText(editor: HTMLElement, value: string) {
 describe("EDIT-001 local editor acceptance", () => {
   beforeEach(() => {
     window.location.hash = "#/documents/document-1";
+    vi.stubGlobal("WebSocket", ReadyRealtimeWebSocket);
   });
 
   afterEach(() => {
