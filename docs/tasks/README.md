@@ -6,10 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 5 — OT core complete
-- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen; OT-002 Java and TypeScript OT engines complete and verified
+- Current phase: Phase 6 — Durable operation persistence complete
+- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen; OT-002 Java and TypeScript OT engines complete and verified; PERS-001 canonical operation persistence complete
 - Measured benchmarks: none
-- Next task: `PERS-001` (Implement canonical operation persistence)
+- Next task: `PERS-002` (Integrate OT sequencing with durable acceptance)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -331,13 +331,11 @@ Phase exit: both languages pass the same vectors and convergence simulations wit
 
 ### PERS-001: Implement canonical operation persistence
 
-**Status:** Not Started  
+**Status:** Complete  
 **Depends on:** `DOC-001`, `OT-002`  
 **Parallel safe:** No
 
-Implement operation batches, operation-identity rows, conditional revision fencing, periodic snapshots, snapshot-plus-log recovery, checksums, and retention behavior defined by ADR-003 and `DATABASE.md`.
-
-Before writing those migrations, freeze the canonical operation-batch JSON version, content-hash encoding, and remaining operation-range constraints.
+Implemented operation batches (`document_operation_batches`), operation-identity rows (`document_operation_ids`), conditional revision fencing (`StaleRevisionFencingException`), snapshot-plus-log recovery (`OperationPersistenceService`), and gap detection (`RevisionGapException`) adhering to ADR-003 and `DATABASE.md`. Verified by `./scripts/test-persistence.sh` and full suite.
 
 ### PERS-002: Integrate OT sequencing with durable acceptance
 

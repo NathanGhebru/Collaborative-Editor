@@ -42,5 +42,22 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
             @Param("cursorId") UUID cursorId,
             Pageable pageable
     );
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("""
+        UPDATE Document d
+        SET d.currentRevision = :newRevision,
+            d.updatedAt = :now
+        WHERE d.id = :documentId
+          AND d.syncEpoch = :expectedEpoch
+          AND d.currentRevision = :expectedPreviousRevision
+    """)
+    int updateCurrentRevisionFenced(
+            @Param("documentId") UUID documentId,
+            @Param("expectedEpoch") UUID expectedEpoch,
+            @Param("expectedPreviousRevision") Long expectedPreviousRevision,
+            @Param("newRevision") Long newRevision,
+            @Param("now") OffsetDateTime now
+    );
 }
 

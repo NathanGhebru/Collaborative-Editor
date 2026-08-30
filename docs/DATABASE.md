@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** User and authentication schemas frozen (AUTH-001); document/OT schemas pending DOC-001/PERS-001
+**Status:** User, authentication, document, and canonical operation persistence schemas frozen (AUTH-001, DOC-001, PERS-001)
 **Primary durable database:** PostgreSQL
 **Distributed runtime store:** Redis
 
