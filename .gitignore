@@ -1,6 +1,7 @@
 .env
 .idea/
 .vscode/
+.tools/
 
 backend/target/
 frontend/node_modules/
@@ -9,3 +10,4 @@ frontend/test-results/
 frontend/playwright-report/
 
 *.log
+
