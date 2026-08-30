@@ -27,16 +27,16 @@ test.describe("Real-stack document and sharing E2E integration", () => {
     const password = "Password123!";
 
     // 1. Register real owner account
-    await page.goto("/#/auth/register");
+    await page.goto("/#/register");
     await page.getByLabel("Username").fill(ownerUser);
     await page.getByLabel("Email").fill(ownerEmail);
-    await page.getByLabel("Display Name").fill("Real Stack Owner");
+    await page.getByLabel("Display name").fill("Real Stack Owner");
     await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: "Create Account" }).click();
+    await page.getByRole("button", { name: "Create account" }).click();
 
     // Verify successful login & workspace navigation
     await expect(page.getByRole("heading", { name: "Your workspace" })).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(`Signed in as ${ownerUser}`)).toBeVisible();
+    await expect(page.locator(".app-navigation").getByText("Real Stack Owner")).toBeVisible();
 
     // 2. Create document from browser
     await page.getByLabel("Title").fill("Real Stack Architecture");
@@ -46,7 +46,7 @@ test.describe("Real-stack document and sharing E2E integration", () => {
     // 3. Verify document detail loaded and content displayed
     await expect(page.getByRole("heading", { name: "Real Stack Architecture" })).toBeVisible();
     await expect(page.getByText("Real PostgreSQL initial snapshot text")).toBeVisible();
-    await expect(page.getByText("You are the owner of this document.")).toBeVisible();
+    await expect(page.getByText("You control access and deletion.")).toBeVisible();
 
     // 4. Verify document appears in workspace list
     await page.goto("/#/documents");
@@ -67,23 +67,24 @@ test.describe("Real-stack document and sharing E2E integration", () => {
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
-    await page.goto("/#/auth/register");
+    await page.goto("/#/register");
     await page.getByLabel("Username").fill(editorUser);
     await page.getByLabel("Email").fill(editorEmail);
-    await page.getByLabel("Display Name").fill("Real Stack Editor");
+    await page.getByLabel("Display name").fill("Real Stack Editor");
     await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: "Create Account" }).click();
+    await page.getByRole("button", { name: "Create account" }).click();
 
     await expect(page.getByRole("heading", { name: "Your workspace" })).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(`Signed in as ${editorUser}`)).toBeVisible();
+    await expect(page.locator(".app-navigation").getByText("Real Stack Editor")).toBeVisible();
 
     // 7. Log back in as owner to grant access
     await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
-    await page.getByLabel("Username or Email").fill(ownerUser);
+    await page.getByLabel("Username or email").fill(ownerUser);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByText(`Signed in as ${ownerUser}`)).toBeVisible();
+    await expect(page.locator(".app-navigation").getByText("Real Stack Owner")).toBeVisible();
 
     await page.getByText("Renamed Architecture Spec").click();
     await expect(page.getByRole("heading", { name: "Renamed Architecture Spec" })).toBeVisible();
@@ -94,11 +95,12 @@ test.describe("Real-stack document and sharing E2E integration", () => {
 
     // 8. Log in as editor and verify shared document visibility
     await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
-    await page.getByLabel("Username or Email").fill(editorUser);
+    await page.getByLabel("Username or email").fill(editorUser);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByText(`Signed in as ${editorUser}`)).toBeVisible();
+    await expect(page.locator(".app-navigation").getByText("Real Stack Editor")).toBeVisible();
 
     await expect(page.getByText("Renamed Architecture Spec")).toBeVisible();
     await page.getByText("Renamed Architecture Spec").click();
@@ -115,11 +117,12 @@ test.describe("Real-stack document and sharing E2E integration", () => {
 
     // 10. Log back in as owner to revoke access
     await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
-    await page.getByLabel("Username or Email").fill(ownerUser);
+    await page.getByLabel("Username or email").fill(ownerUser);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByText(`Signed in as ${ownerUser}`)).toBeVisible();
+    await expect(page.locator(".app-navigation").getByText("Real Stack Owner")).toBeVisible();
 
     await page.getByText("Editor Modified Spec").click();
     await page.getByRole("button", { name: "Revoke access" }).click();
@@ -127,19 +130,21 @@ test.describe("Real-stack document and sharing E2E integration", () => {
 
     // 11. Verify former editor loses access
     await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
-    await page.getByLabel("Username or Email").fill(editorUser);
+    await page.getByLabel("Username or email").fill(editorUser);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByText("No documents yet. Create your first document to get started.")).toBeVisible();
 
     // 12. Log in as owner and delete document
     await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
-    await page.getByLabel("Username or Email").fill(ownerUser);
+    await page.getByLabel("Username or email").fill(ownerUser);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByText(`Signed in as ${ownerUser}`)).toBeVisible();
+    await expect(page.locator(".app-navigation").getByText("Real Stack Owner")).toBeVisible();
 
     await page.getByText("Editor Modified Spec").click();
     await page.getByRole("button", { name: "Delete document" }).click();

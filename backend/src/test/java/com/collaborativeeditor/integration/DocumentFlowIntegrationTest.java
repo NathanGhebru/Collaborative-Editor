@@ -38,7 +38,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest(properties = "app.jwt.secret=c3VwZXItc2VjcmV0LWtleS1mb3ItZGV2ZWxvcG1lbnQtZW52aXJvbm1lbnQtY29sbGFiLWVkaXRvcg==")
 @ActiveProfiles("test")
-@Transactional
 class DocumentFlowIntegrationTest {
 
     @Autowired

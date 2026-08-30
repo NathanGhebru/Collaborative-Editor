@@ -31,11 +31,11 @@ test.describe("Real Authentication Integration (Unmocked)", () => {
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Create account" }).click();
 
-    await expect(page.getByRole("heading", { name: `Welcome, ${displayName}` })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your workspace" })).toBeVisible();
 
     // 6. Browser reload while authenticated (5. Refresh-cookie / session restoration)
     await page.reload();
-    await expect(page.getByRole("heading", { name: `Welcome, ${displayName}` })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your workspace" })).toBeVisible();
 
     // 7. Logout & 14. Refresh-token revocation
     await page.getByRole("button", { name: "Sign out" }).click();
@@ -49,7 +49,7 @@ test.describe("Real Authentication Integration (Unmocked)", () => {
     await page.getByLabel("Username or email").fill(username);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByRole("heading", { name: `Welcome, ${displayName}` })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your workspace" })).toBeVisible();
 
     // Clean logout
     await page.getByRole("button", { name: "Sign out" }).click();
@@ -74,4 +74,3 @@ test.describe("Real Authentication Integration (Unmocked)", () => {
     await expect(page.getByRole("alert")).toHaveText("Email is already registered.");
   });
 });
-

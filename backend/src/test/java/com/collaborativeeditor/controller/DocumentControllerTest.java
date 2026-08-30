@@ -37,9 +37,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 
 @WebMvcTest(
         controllers = DocumentController.class,
@@ -91,7 +93,7 @@ class DocumentControllerTest {
         when(documentService.createDocument(any(), any(CreateDocumentRequest.class))).thenReturn(response);
 
         mockMvc.perform(post("/api/v1/documents")
-                        .with(user(testUser))
+                        .with(authentication(new UsernamePasswordAuthenticationToken(testUser, null, java.util.Collections.emptyList())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -107,7 +109,7 @@ class DocumentControllerTest {
         CreateDocumentRequest request = new CreateDocumentRequest("   ");
 
         mockMvc.perform(post("/api/v1/documents")
-                        .with(user(testUser))
+                        .with(authentication(new UsernamePasswordAuthenticationToken(testUser, null, java.util.Collections.emptyList())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isUnprocessableEntity())
@@ -132,7 +134,7 @@ class DocumentControllerTest {
         when(documentService.listDocuments(any(), any(), any())).thenReturn(response);
 
         mockMvc.perform(get("/api/v1/documents")
-                        .with(user(testUser)))
+                        .with(authentication(new UsernamePasswordAuthenticationToken(testUser, null, java.util.Collections.emptyList()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.documents[0].title").value("My Doc"))
                 .andExpect(jsonPath("$.nextCursor").doesNotExist());
@@ -157,7 +159,7 @@ class DocumentControllerTest {
         when(documentService.getDocument(any(), eq(docId))).thenReturn(response);
 
         mockMvc.perform(get("/api/v1/documents/{documentId}", docId)
-                        .with(user(testUser)))
+                        .with(authentication(new UsernamePasswordAuthenticationToken(testUser, null, java.util.Collections.emptyList()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(docId.toString()))
                 .andExpect(jsonPath("$.title").value("Sample Doc"));
@@ -171,7 +173,7 @@ class DocumentControllerTest {
                 .thenThrow(new ApiException(ErrorCode.DOCUMENT_NOT_FOUND));
 
         mockMvc.perform(get("/api/v1/documents/{documentId}", docId)
-                        .with(user(testUser)))
+                        .with(authentication(new UsernamePasswordAuthenticationToken(testUser, null, java.util.Collections.emptyList()))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("DOCUMENT_NOT_FOUND"));
     }
@@ -195,7 +197,7 @@ class DocumentControllerTest {
         when(documentService.updateDocument(any(), eq(docId), any(UpdateDocumentRequest.class))).thenReturn(response);
 
         mockMvc.perform(patch("/api/v1/documents/{documentId}", docId)
-                        .with(user(testUser))
+                        .with(authentication(new UsernamePasswordAuthenticationToken(testUser, null, java.util.Collections.emptyList())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -208,7 +210,7 @@ class DocumentControllerTest {
         UUID docId = UUID.randomUUID();
 
         mockMvc.perform(delete("/api/v1/documents/{documentId}", docId)
-                        .with(user(testUser)))
+                        .with(authentication(new UsernamePasswordAuthenticationToken(testUser, null, java.util.Collections.emptyList()))))
                 .andExpect(status().isNoContent());
     }
 
@@ -228,7 +230,7 @@ class DocumentControllerTest {
         when(documentService.listPermissions(any(), eq(docId))).thenReturn(response);
 
         mockMvc.perform(get("/api/v1/documents/{documentId}/permissions", docId)
-                        .with(user(testUser)))
+                        .with(authentication(new UsernamePasswordAuthenticationToken(testUser, null, java.util.Collections.emptyList()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.owner.username").value("testuser"))
                 .andExpect(jsonPath("$.permissions[0].role").value("EDITOR"));
@@ -248,7 +250,7 @@ class DocumentControllerTest {
         when(documentService.grantPermission(any(), eq(docId), any(GrantPermissionRequest.class))).thenReturn(response);
 
         mockMvc.perform(post("/api/v1/documents/{documentId}/permissions", docId)
-                        .with(user(testUser))
+                        .with(authentication(new UsernamePasswordAuthenticationToken(testUser, null, java.util.Collections.emptyList())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -262,7 +264,7 @@ class DocumentControllerTest {
         UUID targetUserId = UUID.randomUUID();
 
         mockMvc.perform(delete("/api/v1/documents/{documentId}/permissions/{userId}", docId, targetUserId)
-                        .with(user(testUser)))
+                        .with(authentication(new UsernamePasswordAuthenticationToken(testUser, null, java.util.Collections.emptyList()))))
                 .andExpect(status().isNoContent());
     }
 }

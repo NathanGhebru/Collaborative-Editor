@@ -280,7 +280,7 @@ Verification:
 ./scripts/test-e2e.sh -- editor
 ```
 
-Verification note (2026-08-29): PlainTextEditor component (`PlainTextEditor.tsx`), useLocalEditor hook (`useLocalEditor.ts`), deterministic UTF-16 operation extraction (`operationExtractor.ts`), unit tests (`PlainTextEditor.test.tsx`), and Playwright E2E suite (`editor.spec.ts`) implemented and integrated into `DocumentDetailPage.tsx`. `npm run typecheck`, `npm run lint`, Vitest unit tests (24 passed), and Playwright E2E editor tests passed cleanly.
+Verification note (2026-08-30): Integrated Antigravity's production implementation with Codex's independent acceptance tests (`EditorAcceptance.test.tsx` and combined E2E tests in `editor.spec.ts`). Fixed cascading delete in H2 test database and stabilized E2E race conditions. All 28 frontend tests, 49 backend tests, and 12 Playwright E2E tests pass cleanly.
 
 Phase exit: the full app remains runnable and a user can load and edit document text locally with deterministic operation capture.
 
