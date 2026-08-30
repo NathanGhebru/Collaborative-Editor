@@ -15,8 +15,20 @@ public record SubmitOperationCommand(
     UUID clientOperationId,
     UUID actorUserId,
     long baseRevision,
-    Operation operation
+    Operation operation,
+    int maxRetries
 ) {
+    public SubmitOperationCommand(
+            UUID documentId,
+            UUID syncEpoch,
+            UUID clientId,
+            UUID clientOperationId,
+            UUID actorUserId,
+            long baseRevision,
+            Operation operation) {
+        this(documentId, syncEpoch, clientId, clientOperationId, actorUserId, baseRevision, operation, 30);
+    }
+
     public SubmitOperationCommand {
         Objects.requireNonNull(documentId, "documentId must not be null");
         Objects.requireNonNull(syncEpoch, "syncEpoch must not be null");

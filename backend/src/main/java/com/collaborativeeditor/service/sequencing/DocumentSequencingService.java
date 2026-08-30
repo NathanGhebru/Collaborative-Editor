@@ -33,12 +33,17 @@ public class DocumentSequencingService {
 
     private final DocumentRepository documentRepository;
     private final OperationPersistenceService persistenceService;
+    private volatile Runnable testProvisionalHook;
 
     public DocumentSequencingService(
             DocumentRepository documentRepository,
             OperationPersistenceService persistenceService) {
         this.documentRepository = documentRepository;
         this.persistenceService = persistenceService;
+    }
+
+    public void setTestProvisionalHook(Runnable testProvisionalHook) {
+        this.testProvisionalHook = testProvisionalHook;
     }
 
     /**
@@ -118,7 +123,8 @@ public class DocumentSequencingService {
         }
 
         // 6. Optimistic Sequencing & Rebase Loop (with fencing retry)
-        for (int attempt = 0; attempt < MAX_SEQUENCING_RETRIES; attempt++) {
+        int maxRetries = command.maxRetries() > 0 ? command.maxRetries() : MAX_SEQUENCING_RETRIES;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
             if (attempt > 0) {
                 // Short jittered backoff to alleviate high concurrency collisions
                 try {
@@ -196,6 +202,12 @@ public class DocumentSequencingService {
                 List.of(persistedOp),
                 null
             );
+
+            Runnable provHook = this.testProvisionalHook;
+            if (provHook != null) {
+                this.testProvisionalHook = null;
+                provHook.run();
+            }
 
             try {
                 DocumentOperationBatch savedBatch = persistenceService.persistBatch(batch);

@@ -60,7 +60,7 @@ These are the task-specific commands or evidence gates. The scripts are created 
 | `OT-001` | `./scripts/validate-docs.sh`; human approval of synchronization contract |
 | `OT-002` | `./scripts/test-ot.sh`; shared Java/TypeScript vector equality |
 | `PERS-001` | `./scripts/test-persistence.sh -- operation-log snapshots recovery` |
-| `PERS-002` | `./scripts/test-integration.sh -- durable-operations failure-injection` |
+| `PERS-002` | `./scripts/test-sequencing.sh` |
 | `RT-001` | `./scripts/validate-docs.sh`; protocol schema/close/limit review |
 | `RT-002` | `./scripts/test-websocket.sh -- lifecycle operations authorization` |
 | `RT-003` | `./scripts/test-websocket.sh -- reconnect`; `./scripts/test-e2e.sh -- collaboration reconnect` |
@@ -352,7 +352,17 @@ Verification note (2026-08-30): Integrated Antigravity's production persistence 
 **Depends on:** `PERS-001`  
 **Parallel safe:** No
 
-Implemented transport-independent `DocumentSequencingService` coordinating envelope validation, document/epoch verification, base revision validation, historical rebase against committed canonical history via `OtEngine`, deterministic UUID tie-breaking, split deletion / composite group handling, optimistic sequencing retry loop with conditional revision fencing, durable persistence via `OperationPersistenceService`, and exact idempotent retry. Verified by `./scripts/test-sequencing.sh` (11 tests), `./scripts/test-persistence.sh` (14 tests), `./scripts/test-backend.sh` (123 tests), and `./scripts/test-ot.sh`.
+Implement transport-independent `DocumentSequencingService` coordinating envelope validation, document/epoch verification, base revision validation, historical rebase against committed canonical history via `OtEngine`, deterministic UUID tie-breaking, split deletion / composite group handling, optimistic sequencing retry loop with conditional revision fencing, durable persistence via `OperationPersistenceService`, and exact idempotent retry.
+
+Verification:
+
+```bash
+./scripts/test-sequencing.sh
+./scripts/test-persistence.sh
+./scripts/test-backend.sh
+```
+
+Verification note (2026-08-30): Integrated Antigravity's production sequencing pipeline (`antigravity/pers-002`) with Codex's independent PostgreSQL 17 Testcontainers acceptance suite (`codex/pers-002-tests`). Verified document recovery, snapshot uniqueness across sync epochs (`UNIQUE (document_id, sync_epoch, revision)` via Flyway migration V4), multi-operation rebase, server-generated composite group / split delete persistence, idempotency lookup & conflict detection on identity reuse, pre-commit persistence failure rollback, and optimistic fencing retry. Created `TestSequencingAdapterFactory` bridging Spring context to `DurableSequencingTestAdapter` test harness and created `scripts/test-sequencing.sh`. All 11 production sequencing tests, all 12 PostgreSQL Testcontainers acceptance tests (23 total sequencing tests), all 24 persistence tests, all 123 backend tests, and all 42 TypeScript OT tests pass cleanly.
 
 ---
 

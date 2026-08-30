@@ -65,6 +65,12 @@ public class OperationPersistenceService {
      * @return The persisted DocumentOperationBatch entity.
      * @throws StaleRevisionFencingException if conditional update fails (fencing / sequencer safety).
      */
+    private volatile Runnable testPreCommitHook;
+
+    public void setTestPreCommitHook(Runnable testPreCommitHook) {
+        this.testPreCommitHook = testPreCommitHook;
+    }
+
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public DocumentOperationBatch persistBatch(CanonicalOperationBatch batch) {
         Objects.requireNonNull(batch, "batch must not be null");
@@ -152,6 +158,10 @@ public class OperationPersistenceService {
             );
         }
 
+        if (testPreCommitHook != null) {
+            testPreCommitHook.run();
+        }
+
         return savedBatch;
     }
 
@@ -198,6 +208,16 @@ public class OperationPersistenceService {
             .findFirst()
             .orElseThrow(() -> new IllegalStateException("Operation ID row references revision "
                 + existingId.getRevision() + " but batch " + batch.getId() + " does not contain it"));
+
+        if (incomingOp != null && !matchingOp.operation().equals(incomingOp)) {
+            throw new IdempotencyConflictException(
+                documentId,
+                syncEpoch,
+                clientId,
+                clientOperationId,
+                "Operation ID " + clientOperationId + " already used with different payload"
+            );
+        }
 
         return IdempotencyLookupResult.duplicate(existingId.getRevision(), batch.getId(), matchingOp);
     }
