@@ -432,7 +432,7 @@ describe("RT-002 collaboration state machine", () => {
     transport.receive(operations({
       revision: 2,
       clientId: LOCAL_CLIENT,
-      clientOperationId: sentMessages(transport).filter((m) => m.type === "client.operation")[0].payload.clientOperationId as string,
+      clientOperationId: (sentMessages(transport).filter((m) => m.type === "client.operation")[0].payload as Record<string, unknown>).clientOperationId as string,
       operation: { kind: "INSERT", position: 0, text: "A" },
     }));
 
@@ -460,6 +460,575 @@ describe("RT-002 collaboration state machine", () => {
       code: "INVALID_SERVER_MESSAGE",
       requiresResync: true,
     }));
+  });
+});
+
+describe("RT-003 same-epoch reconnect and recovery", () => {
+  it("reconnects when fully synchronized with a fresh ticket and same clientId", async () => {
+    const transports: MockTransport[] = [];
+    const ticketCalls: string[] = [];
+    let scheduledCb: (() => void) | null = null;
+
+    const client = new CollaborationClient({
+      documentId: DOCUMENT_ID,
+      syncEpoch: EPOCH,
+      revision: 0,
+      content: "hello",
+      clientId: LOCAL_CLIENT,
+      ticketProvider: {
+        create: vi.fn(async (docId) => {
+          ticketCalls.push(docId);
+          return {
+            ticket: `ticket-${ticketCalls.length}`,
+            expiresAt: "2026-08-30T12:16:00Z",
+            websocketPath: `/ws/v1/documents/${docId}`,
+          };
+        }),
+      },
+      createTransport: () => {
+        const t = new MockTransport();
+        transports.push(t);
+        return t;
+      },
+      buildWebSocketUrl: (_path, token) => `ws://test/ws/v1/documents/document?ticket=${token}`,
+      scheduleReconnect: (cb) => {
+        scheduledCb = cb;
+        return 1;
+      },
+      cancelScheduledReconnect: () => {
+        scheduledCb = null;
+      },
+    });
+
+    await client.start();
+    expect(transports.length).toBe(1);
+    transports[0].open();
+    transports[0].receive(ready(0));
+    expect(client.getSnapshot().status).toBe("active");
+    expect(ticketCalls.length).toBe(1);
+
+    // Disconnect unexpectedly
+    transports[0].serverClose(1001, "server restarting");
+    expect(client.getSnapshot().status).toBe("reconnecting");
+
+    // Trigger scheduled reconnect
+    expect(scheduledCb).not.toBeNull();
+    const reconnectCb = scheduledCb!;
+    scheduledCb = null;
+    reconnectCb();
+    await Promise.resolve();
+
+    expect(ticketCalls.length).toBe(2);
+    expect(transports.length).toBe(2);
+    expect(transports[1].url).toBe(`ws://test/ws/v1/documents/document?ticket=ticket-2`);
+
+    transports[1].open();
+    expect(client.getSnapshot().status).toBe("awaiting-ready");
+    expect(sentMessages(transports[1])[0]).toEqual(expect.objectContaining({
+      type: "client.hello",
+      clientId: LOCAL_CLIENT,
+      payload: { knownEpoch: EPOCH, knownRevision: 0 },
+    }));
+
+    transports[1].receive(ready(0));
+    expect(client.getSnapshot().status).toBe("active");
+  });
+
+  it("retries uncommitted in-flight operation with SAME clientOperationId upon reconnect", async () => {
+    const transports: MockTransport[] = [];
+    let scheduledCb: (() => void) | null = null;
+
+    const client = new CollaborationClient({
+      documentId: DOCUMENT_ID,
+      syncEpoch: EPOCH,
+      revision: 0,
+      content: "hello",
+      clientId: LOCAL_CLIENT,
+      ticketProvider: {
+        create: vi.fn(async () => ticket()),
+      },
+      createTransport: () => {
+        const t = new MockTransport();
+        transports.push(t);
+        return t;
+      },
+      createUuid: () => "op-fixed-1",
+      scheduleReconnect: (cb) => {
+        scheduledCb = cb;
+        return 1;
+      },
+    });
+
+    await client.start();
+    transports[0].open();
+    transports[0].receive(ready(0));
+
+    // Submit edit
+    client.submitLocalOperation({ kind: "INSERT", position: 0, text: "A" });
+    const op1 = sentMessages(transports[0]).find((m) => m.type === "client.operation");
+    expect(op1?.payload).toEqual(expect.objectContaining({
+      clientOperationId: "op-fixed-1",
+      baseRevision: 0,
+      operation: { kind: "INSERT", position: 0, text: "A" },
+    }));
+
+    // Socket drops before server commits
+    transports[0].serverClose(1006, "abnormal drop");
+    expect(client.getSnapshot().status).toBe("reconnecting");
+
+    // Execute reconnect
+    scheduledCb!();
+    await Promise.resolve();
+
+    transports[1].open();
+    // In awaiting-ready, operation is not sent yet
+    expect(sentMessages(transports[1]).length).toBe(1); // only client.hello
+    expect(sentMessages(transports[1])[0].type).toBe("client.hello");
+
+    // Server ready arrives (no catch-up since uncommitted)
+    transports[1].receive(ready(0));
+    expect(client.getSnapshot().status).toBe("active");
+
+    // Client must re-flush in-flight operation preserving original clientOperationId
+    const retriedOp = sentMessages(transports[1]).find((m) => m.type === "client.operation");
+    expect(retriedOp?.payload).toEqual(expect.objectContaining({
+      clientOperationId: "op-fixed-1",
+      baseRevision: 0,
+      operation: { kind: "INSERT", position: 0, text: "A" },
+    }));
+
+    // Server accepts retried operation
+    transports[1].receive(operations({
+      revision: 1,
+      clientId: LOCAL_CLIENT,
+      clientOperationId: "op-fixed-1",
+      operation: { kind: "INSERT", position: 0, text: "A" },
+    }));
+
+    expect(client.getSnapshot()).toEqual(expect.objectContaining({
+      confirmedRevision: 1,
+      confirmedContent: "Ahello",
+      optimisticContent: "Ahello",
+      inFlight: null,
+    }));
+  });
+
+  it("acknowledges committed in-flight operation from catch-up without retransmission", async () => {
+    const transports: MockTransport[] = [];
+    let scheduledCb: (() => void) | null = null;
+
+    const client = new CollaborationClient({
+      documentId: DOCUMENT_ID,
+      syncEpoch: EPOCH,
+      revision: 0,
+      content: "hello",
+      clientId: LOCAL_CLIENT,
+      ticketProvider: { create: vi.fn(async () => ticket()) },
+      createTransport: () => {
+        const t = new MockTransport();
+        transports.push(t);
+        return t;
+      },
+      createUuid: () => "op-ack-in-catchup",
+      scheduleReconnect: (cb) => {
+        scheduledCb = cb;
+        return 1;
+      },
+    });
+
+    await client.start();
+    transports[0].open();
+    transports[0].receive(ready(0));
+
+    // Submit edit
+    client.submitLocalOperation({ kind: "INSERT", position: 5, text: "!" });
+
+    // Connection drops right after send, but server committed it
+    transports[0].serverClose(1001, "going away");
+
+    // Reconnect
+    scheduledCb!();
+    await Promise.resolve();
+    transports[1].open();
+
+    // Server delivers catch-up containing this client's committed edit
+    transports[1].receive(operations({
+      revision: 1,
+      clientId: LOCAL_CLIENT,
+      clientOperationId: "op-ack-in-catchup",
+      operation: { kind: "INSERT", position: 5, text: "!" },
+    }));
+    transports[1].receive(ready(1));
+
+    expect(client.getSnapshot()).toEqual(expect.objectContaining({
+      status: "active",
+      confirmedRevision: 1,
+      confirmedContent: "hello!",
+      optimisticContent: "hello!",
+      inFlight: null,
+    }));
+
+    // Verify no duplicate operation was transmitted on new transport
+    const opsSent = sentMessages(transports[1]).filter((m) => m.type === "client.operation");
+    expect(opsSent.length).toBe(0);
+  });
+
+  it("rebases in-flight and buffered operations across catch-up remote edits", async () => {
+    const transports: MockTransport[] = [];
+    let scheduledCb: (() => void) | null = null;
+    const uuids = [
+      "msg-hello-1",
+      "op-in-flight",
+      "msg-op-1",
+      "op-buffered-offline",
+      "msg-hello-2",
+      "msg-retry-1",
+      "msg-send-2",
+    ];
+
+    const client = new CollaborationClient({
+      documentId: DOCUMENT_ID,
+      syncEpoch: EPOCH,
+      revision: 0,
+      content: "hello",
+      clientId: LOCAL_CLIENT,
+      ticketProvider: { create: vi.fn(async () => ticket()) },
+      createTransport: () => {
+        const t = new MockTransport();
+        transports.push(t);
+        return t;
+      },
+      createUuid: () => uuids.shift() ?? "extra-uuid",
+      scheduleReconnect: (cb) => {
+        scheduledCb = cb;
+        return 1;
+      },
+    });
+
+    await client.start();
+    transports[0].open();
+    transports[0].receive(ready(0));
+
+    // Edit 1: inFlight
+    client.submitLocalOperation({ kind: "INSERT", position: 0, text: "A" });
+
+    // Disconnect
+    transports[0].serverClose(1006, "dropped");
+    expect(client.getSnapshot().status).toBe("reconnecting");
+
+    // Edit 2 while disconnected (buffered in pendingBuffer)
+    client.submitLocalOperation({ kind: "INSERT", position: 6, text: "Z" }); // text is "AhelloZ"
+    expect(client.getSnapshot().optimisticContent).toBe("AhelloZ");
+    expect(client.getSnapshot().pendingBuffer.length).toBe(1);
+
+    // Reconnect
+    scheduledCb!();
+    await Promise.resolve();
+    transports[1].open();
+
+    // Catch-up: remote collaborator inserted "X" at position 0 (revision 1)
+    transports[1].receive(envelope("server.operations", {
+      operations: [
+        {
+          revision: 1,
+          clientId: REMOTE_CLIENT,
+          clientOperationId: "remote-op-1",
+          actorUserId: "user-remote",
+          operation: { kind: "INSERT", position: 0, text: "X" },
+        },
+      ],
+    }));
+
+    // Server ready at revision 1
+    transports[1].receive(ready(1));
+    expect(client.getSnapshot().status).toBe("active");
+
+    // Local in-flight "A" (was at position 0) rebased against remote "X" -> position 1 (assuming tie-break/shift)
+    const opsSent = sentMessages(transports[1]).filter((m) => m.type === "client.operation");
+    expect(opsSent.length).toBe(1);
+    expect(opsSent[0].payload).toEqual(expect.objectContaining({
+      clientOperationId: "op-in-flight",
+      baseRevision: 1,
+    }));
+
+    // Server confirms "A" at revision 2
+    transports[1].receive(envelope("server.operations", {
+      operations: [
+        {
+          revision: 2,
+          clientId: LOCAL_CLIENT,
+          clientOperationId: "op-in-flight",
+          actorUserId: "user-local",
+          operation: (opsSent[0].payload as Record<string, unknown>).operation as Record<string, unknown>,
+        },
+      ],
+    }));
+
+    // After ACK, buffered operation "Z" is transmitted
+    const opsSent2 = sentMessages(transports[1]).filter((m) => m.type === "client.operation");
+    expect(opsSent2.length).toBe(2);
+    expect(opsSent2[1].payload).toEqual(expect.objectContaining({
+      clientOperationId: "op-buffered-offline",
+      baseRevision: 2,
+    }));
+
+    // Server confirms "Z" at revision 3
+    transports[1].receive(envelope("server.operations", {
+      operations: [
+        {
+          revision: 3,
+          clientId: LOCAL_CLIENT,
+          clientOperationId: "op-buffered-offline",
+          actorUserId: "user-local",
+          operation: (opsSent2[1].payload as Record<string, unknown>).operation as Record<string, unknown>,
+        },
+      ],
+    }));
+
+    expect(client.getSnapshot()).toEqual(expect.objectContaining({
+      confirmedRevision: 3,
+      confirmedContent: "XAhelloZ",
+      optimisticContent: "XAhelloZ",
+      inFlight: null,
+      pendingBuffer: [],
+    }));
+  });
+
+  it("deduplicates canonical operations <= confirmedRevision during catch-up", async () => {
+    const transports: MockTransport[] = [];
+    let scheduledCb: (() => void) | null = null;
+
+    const client = new CollaborationClient({
+      documentId: DOCUMENT_ID,
+      syncEpoch: EPOCH,
+      revision: 1,
+      content: "hello!",
+      clientId: LOCAL_CLIENT,
+      ticketProvider: { create: vi.fn(async () => ticket()) },
+      createTransport: () => {
+        const t = new MockTransport();
+        transports.push(t);
+        return t;
+      },
+      scheduleReconnect: (cb) => {
+        scheduledCb = cb;
+        return 1;
+      },
+    });
+
+    await client.start();
+    transports[0].open();
+    transports[0].receive(ready(1));
+
+    // Disconnect and reconnect
+    transports[0].serverClose(1001);
+    scheduledCb!();
+    await Promise.resolve();
+    transports[1].open();
+
+    // Server sends catch-up containing revision 1 (already seen) and revision 2
+    transports[1].receive(envelope("server.operations", {
+      operations: [
+        {
+          revision: 1,
+          clientId: REMOTE_CLIENT,
+          clientOperationId: "op-rev-1",
+          actorUserId: "u1",
+          operation: { kind: "INSERT", position: 5, text: "!" },
+        },
+        {
+          revision: 2,
+          clientId: REMOTE_CLIENT,
+          clientOperationId: "op-rev-2",
+          actorUserId: "u1",
+          operation: { kind: "INSERT", position: 0, text: "> " },
+        },
+      ],
+    }));
+    transports[1].receive(ready(2));
+
+    // Revision 1 is deduplicated without double-inserting "!". Revision 2 is applied once.
+    expect(client.getSnapshot()).toEqual(expect.objectContaining({
+      confirmedRevision: 2,
+      confirmedContent: "> hello!",
+      optimisticContent: "> hello!",
+    }));
+  });
+
+  it("triggers REVISION_GAP resync when catch-up contains a missing revision", async () => {
+    const transports: MockTransport[] = [];
+    let scheduledCb: (() => void) | null = null;
+
+    const client = new CollaborationClient({
+      documentId: DOCUMENT_ID,
+      syncEpoch: EPOCH,
+      revision: 0,
+      content: "hello",
+      clientId: LOCAL_CLIENT,
+      ticketProvider: { create: vi.fn(async () => ticket()) },
+      createTransport: () => {
+        const t = new MockTransport();
+        transports.push(t);
+        return t;
+      },
+      scheduleReconnect: (cb) => {
+        scheduledCb = cb;
+        return 1;
+      },
+    });
+
+    await client.start();
+    transports[0].open();
+    transports[0].receive(ready(0));
+
+    // Disconnect and reconnect
+    transports[0].serverClose(1001);
+    scheduledCb!();
+    await Promise.resolve();
+    transports[1].open();
+
+    // Server sends revision 2 directly (gap: expected 1)
+    transports[1].receive(envelope("server.operations", {
+      operations: [
+        {
+          revision: 2,
+          clientId: REMOTE_CLIENT,
+          clientOperationId: "op-rev-2",
+          actorUserId: "u1",
+          operation: { kind: "INSERT", position: 0, text: "A" },
+        },
+      ],
+    }));
+
+    expect(client.getSnapshot()).toEqual(expect.objectContaining({
+      status: "error",
+      error: expect.objectContaining({
+        code: "REVISION_GAP",
+        requiresResync: true,
+      }),
+    }));
+  });
+
+  it("handles session supersession (4004) as terminal closure without reconnecting", async () => {
+    const transports: MockTransport[] = [];
+    let scheduledCb: (() => void) | null = null;
+
+    const client = new CollaborationClient({
+      documentId: DOCUMENT_ID,
+      syncEpoch: EPOCH,
+      revision: 0,
+      content: "hello",
+      clientId: LOCAL_CLIENT,
+      ticketProvider: { create: vi.fn(async () => ticket()) },
+      createTransport: () => {
+        const t = new MockTransport();
+        transports.push(t);
+        return t;
+      },
+      scheduleReconnect: (cb) => {
+        scheduledCb = cb;
+        return 1;
+      },
+    });
+
+    await client.start();
+    transports[0].open();
+    transports[0].receive(ready(0));
+
+    // Duplicate tab opens with same clientId -> server sends close code 4004
+    transports[0].serverClose(4004, "Session superseded by newer connection");
+
+    expect(client.getSnapshot()).toEqual(expect.objectContaining({
+      status: "error",
+      error: expect.objectContaining({
+        code: "WEBSOCKET_CLOSED_4004",
+        reconnectable: false,
+      }),
+    }));
+    expect(scheduledCb).toBeNull();
+  });
+
+  it("handles epoch mismatch during reconnect as fatal resync", async () => {
+    const transports: MockTransport[] = [];
+    let scheduledCb: (() => void) | null = null;
+
+    const client = new CollaborationClient({
+      documentId: DOCUMENT_ID,
+      syncEpoch: EPOCH,
+      revision: 0,
+      content: "hello",
+      clientId: LOCAL_CLIENT,
+      ticketProvider: { create: vi.fn(async () => ticket()) },
+      createTransport: () => {
+        const t = new MockTransport();
+        transports.push(t);
+        return t;
+      },
+      scheduleReconnect: (cb) => {
+        scheduledCb = cb;
+        return 1;
+      },
+    });
+
+    await client.start();
+    transports[0].open();
+    transports[0].receive(ready(0));
+
+    // Disconnect and reconnect
+    transports[0].serverClose(1001);
+    scheduledCb!();
+    await Promise.resolve();
+    transports[1].open();
+
+    // Server returns resync required with EPOCH_MISMATCH
+    transports[1].receive(envelope("server.resync_required", {
+      reason: "EPOCH_MISMATCH",
+    }));
+
+    expect(client.getSnapshot()).toEqual(expect.objectContaining({
+      status: "error",
+      error: expect.objectContaining({
+        code: "EPOCH_MISMATCH",
+        requiresResync: true,
+      }),
+    }));
+  });
+
+  it("cancels reconnect when stop() is explicitly called", async () => {
+    const transports: MockTransport[] = [];
+    let cancelCalled = false;
+
+    const client = new CollaborationClient({
+      documentId: DOCUMENT_ID,
+      syncEpoch: EPOCH,
+      revision: 0,
+      content: "hello",
+      clientId: LOCAL_CLIENT,
+      ticketProvider: { create: vi.fn(async () => ticket()) },
+      createTransport: () => {
+        const t = new MockTransport();
+        transports.push(t);
+        return t;
+      },
+      scheduleReconnect: () => 123,
+      cancelScheduledReconnect: (h) => {
+        if (h === 123) cancelCalled = true;
+      },
+    });
+
+    await client.start();
+    transports[0].open();
+    transports[0].receive(ready(0));
+
+    // Disconnect triggers reconnect scheduling
+    transports[0].serverClose(1001);
+    expect(client.getSnapshot().status).toBe("reconnecting");
+
+    // User navigates away or stops client
+    client.stop();
+
+    expect(cancelCalled).toBe(true);
+    expect(client.getSnapshot().status).toBe("disconnected");
   });
 });
 

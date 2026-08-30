@@ -25,6 +25,7 @@ export type CollaborationStatus =
   | "disconnected"
   | "fetching-ticket"
   | "connecting"
+  | "reconnecting"
   | "awaiting-ready"
   | "active"
   | "closed"
@@ -70,6 +71,13 @@ export interface CollaborationSnapshot {
   error: CollaborationError | null;
 }
 
+export interface ReconnectPolicy {
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+  multiplier?: number;
+  maxRetries?: number;
+}
+
 export interface CollaborationClientOptions {
   documentId: string;
   syncEpoch: string;
@@ -82,6 +90,10 @@ export interface CollaborationClientOptions {
   now?: () => string;
   buildWebSocketUrl?: (websocketPath: string, ticket: string) => string;
   maxPendingOperations?: number;
+  autoReconnect?: boolean;
+  reconnectPolicy?: ReconnectPolicy;
+  scheduleReconnect?: (callback: () => void, delayMs: number) => unknown;
+  cancelScheduledReconnect?: (handle: unknown) => void;
 }
 
 type Listener = () => void;
@@ -92,9 +104,16 @@ export class CollaborationClient {
   private readonly now: () => string;
   private readonly buildWebSocketUrl: (websocketPath: string, ticket: string) => string;
   private readonly maxPendingOperations: number;
+  private readonly autoReconnect: boolean;
+  private readonly reconnectPolicy: Required<ReconnectPolicy>;
+  private readonly scheduleReconnect: (callback: () => void, delayMs: number) => unknown;
+  private readonly cancelScheduledReconnect: (handle: unknown) => void;
+
   private transport: RealtimeTransport | null = null;
   private lifecycle = 0;
   private intentionallyStopped = false;
+  private reconnectAttempt = 0;
+  private reconnectTimer: unknown = null;
   private snapshot: CollaborationSnapshot;
 
   constructor(private readonly options: CollaborationClientOptions) {
@@ -105,6 +124,16 @@ export class CollaborationClient {
     this.now = options.now ?? (() => new Date().toISOString());
     this.buildWebSocketUrl = options.buildWebSocketUrl ?? buildRealtimeWebSocketUrl;
     this.maxPendingOperations = options.maxPendingOperations ?? 100;
+    this.autoReconnect = options.autoReconnect ?? true;
+    this.reconnectPolicy = {
+      initialDelayMs: options.reconnectPolicy?.initialDelayMs ?? 200,
+      maxDelayMs: options.reconnectPolicy?.maxDelayMs ?? 5000,
+      multiplier: options.reconnectPolicy?.multiplier ?? 1.5,
+      maxRetries: options.reconnectPolicy?.maxRetries ?? Infinity,
+    };
+    this.scheduleReconnect = options.scheduleReconnect ?? ((cb, ms) => setTimeout(cb, ms));
+    this.cancelScheduledReconnect = options.cancelScheduledReconnect ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
+
     this.snapshot = {
       status: "disconnected",
       documentId: options.documentId,
@@ -129,62 +158,20 @@ export class CollaborationClient {
   };
 
   async start(): Promise<void> {
-    if (this.snapshot.status !== "disconnected") {
+    if (this.snapshot.status !== "disconnected" && this.snapshot.status !== "reconnecting") {
       return;
     }
 
-    const lifecycle = ++this.lifecycle;
+    this.reconnectAttempt = 0;
+    this.clearReconnectTimer();
     this.intentionallyStopped = false;
-    this.update({ status: "fetching-ticket", error: null });
-
-    let ticket;
-    try {
-      ticket = await this.options.ticketProvider.create(this.snapshot.documentId);
-    } catch (error) {
-      if (lifecycle === this.lifecycle) {
-        this.fail({
-          category: "ticket",
-          code: errorCode(error, "TICKET_REQUEST_FAILED"),
-          message: errorMessage(error, "Unable to create a realtime connection ticket."),
-          fatal: true,
-          reconnectable: false,
-          requiresAuthentication: isAuthenticationFailure(error),
-          requiresResync: false,
-        });
-      }
-      return;
-    }
-
-    if (lifecycle !== this.lifecycle) {
-      return;
-    }
-    try {
-      const transport = this.options.createTransport();
-      this.transport = transport;
-      this.update({ status: "connecting" });
-      transport.connect(
-        this.buildWebSocketUrl(ticket.websocketPath, ticket.ticket),
-        this.transportHandlers(lifecycle),
-      );
-    } catch (error) {
-      if (lifecycle !== this.lifecycle) {
-        return;
-      }
-      this.fail({
-        category: "transport",
-        code: errorCode(error, "WEBSOCKET_CONNECT_FAILED"),
-        message: errorMessage(error, "Unable to open the realtime connection."),
-        fatal: true,
-        reconnectable: true,
-        requiresAuthentication: false,
-        requiresResync: false,
-      });
-    }
+    return this.connectAttempt(++this.lifecycle);
   }
 
   stop(): void {
     ++this.lifecycle;
     this.intentionallyStopped = true;
+    this.clearReconnectTimer();
     this.transport?.close(1000, "Client stopped");
     this.transport = null;
     this.update({
@@ -195,7 +182,7 @@ export class CollaborationClient {
   }
 
   submitLocalOperation(operation: PrimitiveOperation): string {
-    if (this.snapshot.status === "closed" || this.snapshot.status === "error") {
+    if (this.snapshot.status === "closed" || (this.snapshot.status === "error" && this.snapshot.error?.fatal)) {
       throw new Error("Local operations are paused because realtime collaboration is unavailable.");
     }
     const pendingCount = (this.snapshot.inFlight === null ? 0 : 1)
@@ -236,40 +223,111 @@ export class CollaborationClient {
     return pending.clientOperationId;
   }
 
+  private async connectAttempt(lifecycle: number): Promise<void> {
+    if (lifecycle !== this.lifecycle || this.intentionallyStopped) {
+      return;
+    }
+    this.update({ status: this.snapshot.status === "reconnecting" ? "reconnecting" : "fetching-ticket", error: null });
+
+    let ticket;
+    try {
+      ticket = await this.options.ticketProvider.create(this.snapshot.documentId);
+    } catch (error) {
+      if (lifecycle !== this.lifecycle || this.intentionallyStopped) {
+        return;
+      }
+      const fatal = !this.autoReconnect || isAuthenticationFailure(error) || isNotFoundFailure(error);
+      const collabError: CollaborationError = {
+        category: "ticket",
+        code: errorCode(error, "TICKET_REQUEST_FAILED"),
+        message: errorMessage(error, "Unable to create a realtime connection ticket."),
+        fatal,
+        reconnectable: !fatal,
+        requiresAuthentication: isAuthenticationFailure(error),
+        requiresResync: false,
+      };
+      if (fatal) {
+        this.fail(collabError);
+      } else {
+        this.scheduleNextReconnect(lifecycle, collabError);
+      }
+      return;
+    }
+
+    if (lifecycle !== this.lifecycle || this.intentionallyStopped) {
+      return;
+    }
+
+    try {
+      const transport = this.options.createTransport();
+      this.transport = transport;
+      this.update({ status: "connecting" });
+      transport.connect(
+        this.buildWebSocketUrl(ticket.websocketPath, ticket.ticket),
+        this.transportHandlers(lifecycle),
+      );
+    } catch (error) {
+      if (lifecycle !== this.lifecycle || this.intentionallyStopped) {
+        return;
+      }
+      const fatal = !this.autoReconnect;
+      const collabError: CollaborationError = {
+        category: "transport",
+        code: errorCode(error, "WEBSOCKET_CONNECT_FAILED"),
+        message: errorMessage(error, "Unable to open the realtime connection."),
+        fatal,
+        reconnectable: !fatal,
+        requiresAuthentication: false,
+        requiresResync: false,
+      };
+      if (fatal) {
+        this.fail(collabError);
+      } else {
+        this.scheduleNextReconnect(lifecycle, collabError);
+      }
+    }
+  }
+
   private transportHandlers(lifecycle: number): RealtimeTransportHandlers {
     return {
       onOpen: () => {
-        if (lifecycle !== this.lifecycle) {
+        if (lifecycle !== this.lifecycle || this.intentionallyStopped) {
           return;
         }
         this.update({ status: "awaiting-ready" });
         this.sendHello();
       },
       onMessage: (data) => {
-        if (lifecycle !== this.lifecycle) {
+        if (lifecycle !== this.lifecycle || this.intentionallyStopped) {
           return;
         }
         this.receive(data);
       },
       onError: () => {
-        if (lifecycle !== this.lifecycle || this.snapshot.status === "error") {
+        if (lifecycle !== this.lifecycle || this.snapshot.status === "error" || this.intentionallyStopped) {
           return;
         }
-        this.fail({
+        const retryable = this.autoReconnect;
+        const error: CollaborationError = {
           category: "transport",
           code: "WEBSOCKET_ERROR",
           message: "The realtime connection encountered a transport error.",
-          fatal: true,
-          reconnectable: true,
+          fatal: !retryable,
+          reconnectable: retryable,
           requiresAuthentication: false,
           requiresResync: false,
-        });
+        };
+        if (retryable) {
+          this.scheduleNextReconnect(lifecycle, error);
+        } else {
+          this.fail(error);
+        }
       },
       onClose: (event) => {
         if (lifecycle !== this.lifecycle || this.intentionallyStopped) {
           return;
         }
-        this.handleClose(event.code, event.reason, event.wasClean);
+        this.handleClose(event.code, event.reason, event.wasClean, lifecycle);
       },
     };
   }
@@ -583,8 +641,11 @@ export class CollaborationClient {
     });
   }
 
-  private handleClose(code: number, reason: string, wasClean: boolean): void {
+  private handleClose(code: number, reason: string, wasClean: boolean, lifecycle: number): void {
     this.transport = null;
+    if (this.intentionallyStopped) {
+      return;
+    }
     // Preserve a structured fatal server/protocol error when its expected close frame follows.
     if (this.snapshot.status === "error" && this.snapshot.error?.fatal) {
       return;
@@ -593,19 +654,77 @@ export class CollaborationClient {
       this.update({ status: "closed", connectionId: null, role: null });
       return;
     }
-    const retryable = code === 1001 || code === 1006 || code === 1008 || code === 1011;
-    this.fail({
+
+    const retryable = (code === 1001 || code === 1006 || code === 1008 || code === 1011) && this.autoReconnect;
+
+    const error: CollaborationError = {
       category: "transport",
       code: `WEBSOCKET_CLOSED_${code}`,
       message: reason || `Realtime connection closed${wasClean ? "" : " unexpectedly"} (${code}).`,
-      fatal: true,
+      fatal: !retryable,
       reconnectable: retryable,
       requiresAuthentication: code === 4001,
       requiresResync: false,
+    };
+
+    if (retryable) {
+      this.scheduleNextReconnect(lifecycle, error);
+    } else {
+      this.fail(error);
+    }
+  }
+
+  private scheduleNextReconnect(lifecycle: number, error?: CollaborationError): void {
+    if (this.intentionallyStopped || !this.autoReconnect) {
+      return;
+    }
+    this.clearReconnectTimer();
+    this.transport = null;
+
+    // Reset sent flag on in-flight operation so it will be retried after reconnect if unconfirmed
+    if (this.snapshot.inFlight !== null) {
+      this.snapshot = {
+        ...this.snapshot,
+        inFlight: {
+          ...this.snapshot.inFlight,
+          sent: false,
+        },
+      };
+    }
+
+    const delay = Math.min(
+      this.reconnectPolicy.initialDelayMs * Math.pow(this.reconnectPolicy.multiplier, this.reconnectAttempt),
+      this.reconnectPolicy.maxDelayMs,
+    );
+    this.reconnectAttempt++;
+
+    this.update({
+      status: "reconnecting",
+      connectionId: null,
+      role: null,
+      ...(error ? { error } : {}),
     });
+
+    this.reconnectTimer = this.scheduleReconnect(
+      () => {
+        this.reconnectTimer = null;
+        if (lifecycle === this.lifecycle && !this.intentionallyStopped) {
+          void this.connectAttempt(lifecycle);
+        }
+      },
+      delay,
+    );
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== null) {
+      this.cancelScheduledReconnect(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
   }
 
   private fail(error: CollaborationError): void {
+    this.clearReconnectTimer();
     this.update({ status: "error", error, connectionId: null, role: null });
   }
 
@@ -696,4 +815,10 @@ function isAuthenticationFailure(error: unknown): boolean {
   return typeof error === "object" && error !== null
     && (("status" in error && error.status === 401)
       || ("code" in error && error.code === "UNAUTHENTICATED"));
+}
+
+function isNotFoundFailure(error: unknown): boolean {
+  return typeof error === "object" && error !== null
+    && (("status" in error && error.status === 404)
+      || ("code" in error && error.code === "DOCUMENT_NOT_FOUND"));
 }
