@@ -43,6 +43,12 @@ public class GlobalExceptionHandler {
                 primaryErrorCode = ErrorCode.INVALID_EMAIL;
             } else if ("password".equalsIgnoreCase(error.getField())) {
                 primaryErrorCode = ErrorCode.WEAK_PASSWORD;
+            } else if ("title".equalsIgnoreCase(error.getField())) {
+                primaryErrorCode = ErrorCode.INVALID_TITLE;
+            } else if ("initialContent".equalsIgnoreCase(error.getField())) {
+                primaryErrorCode = ErrorCode.DOCUMENT_TOO_LARGE;
+            } else if ("role".equalsIgnoreCase(error.getField())) {
+                primaryErrorCode = ErrorCode.INVALID_ROLE;
             }
         }
 
@@ -82,4 +88,3 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }
-

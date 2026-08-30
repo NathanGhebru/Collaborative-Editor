@@ -22,8 +22,16 @@ public enum ErrorCode {
     REFRESH_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "Refresh token expired."),
     REFRESH_TOKEN_REVOKED(HttpStatus.UNAUTHORIZED, "Refresh token has been revoked."),
 
+    INVALID_TITLE(HttpStatus.UNPROCESSABLE_ENTITY, "Invalid document title."),
+    DOCUMENT_TOO_LARGE(HttpStatus.UNPROCESSABLE_ENTITY, "Document content exceeds maximum allowed size."),
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "Document not found."),
     DOCUMENT_FORBIDDEN(HttpStatus.FORBIDDEN, "Document access denied."),
+    INVALID_CURSOR(HttpStatus.UNPROCESSABLE_ENTITY, "Invalid pagination cursor."),
+
+    USER_NOT_FOUND(HttpStatus.UNPROCESSABLE_ENTITY, "User not found."),
+    ALREADY_HAS_ACCESS(HttpStatus.CONFLICT, "User already has access to this document."),
+    INVALID_ROLE(HttpStatus.UNPROCESSABLE_ENTITY, "Invalid permission role."),
+    PERMISSION_NOT_FOUND(HttpStatus.NOT_FOUND, "Permission record not found."),
 
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "An internal server error occurred.");
 
@@ -43,4 +51,3 @@ public enum ErrorCode {
         return defaultMessage;
     }
 }
-
