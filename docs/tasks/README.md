@@ -6,10 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 3 — Document backend complete
-- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete
+- Current phase: Phase 3 — Document management milestone complete
+- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete
 - Measured benchmarks: none
-- Next task: `DOC-003` (Implement document and sharing UI)
+- Next task: `EDIT-001` (Implement the local editor experience)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -237,10 +237,19 @@ Verification note (2026-08-29): Flyway schema migration `V2__init_document_schem
 ### DOC-003: Implement document and sharing UI
 
 **Status:** Complete
+
 **Depends on:** `AUTH-003`, `DOC-001`  
 **Parallel safe:** Yes, with `DOC-002`.
 
-Implement document list/create/open/rename/delete/share/revoke flows, denied-access behavior, and Playwright coverage.
+Requirements:
+
+- implement document list/create/open/rename/delete/share/revoke flows, denied-access behavior, and Playwright coverage.
+
+Verification:
+
+- `./scripts/test-frontend.sh -- documents`; `./scripts/test-e2e.sh -- documents` pass.
+
+Verification note (2026-08-29): React documents dashboard (`DocumentsDashboard.tsx`), document detail view with owner/editor permissions management (`DocumentDetailPage.tsx`), document API client (`frontend/src/documents/api.ts`), and unit/E2E test suites (`DocumentsFlow.test.tsx`, `frontend/e2e/documents.spec.ts`) implemented and verified against the frozen DOC-001 contract. Combined frontend and backend flows pass cleanly.
 
 Phase verification:
 
