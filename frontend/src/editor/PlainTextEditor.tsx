@@ -1,12 +1,17 @@
 import { type ChangeEvent, type SyntheticEvent, useEffect } from "react";
+import { extractOperations } from "./operationExtractor";
 import { useLocalEditor } from "./useLocalEditor";
 import type { TextOperation } from "./types";
 
 export interface PlainTextEditorProps {
   initialContent?: string;
   readOnly?: boolean;
+  value?: string;
+  dirty?: boolean;
+  statusLabel?: string;
   onContentChange?: (content: string, isDirty: boolean) => void;
   onOperationExtracted?: (operation: TextOperation) => void;
+  onOperationsExtracted?: (operations: TextOperation[]) => void;
 }
 
 export function formatOperation(op: TextOperation | null): string {
@@ -23,35 +28,46 @@ export function formatOperation(op: TextOperation | null): string {
 export function PlainTextEditor({
   initialContent = "",
   readOnly = false,
+  value,
+  dirty,
+  statusLabel,
   onContentChange,
   onOperationExtracted,
+  onOperationsExtracted,
 }: PlainTextEditorProps) {
   const {
-    content,
+    content: localContent,
     selection,
-    isDirty,
+    isDirty: localIsDirty,
     extractedOperations,
     lastOperation,
     updateContent,
     updateSelection,
     resetContent,
   } = useLocalEditor({ initialContent, readOnly });
+  const controlled = value !== undefined;
+  const content = value ?? localContent;
+  const isDirty = dirty ?? localIsDirty;
 
   // Re-sync when initialContent changes externally (e.g. document switch)
   useEffect(() => {
-    resetContent(initialContent);
-  }, [initialContent, resetContent]);
+    if (!controlled) {
+      resetContent(initialContent);
+    }
+  }, [controlled, initialContent, resetContent]);
 
   // Notify parent component if callback provided
   useEffect(() => {
-    onContentChange?.(content, isDirty);
-  }, [content, isDirty, onContentChange]);
+    if (!controlled) {
+      onContentChange?.(content, isDirty);
+    }
+  }, [content, controlled, isDirty, onContentChange]);
 
   useEffect(() => {
-    if (lastOperation) {
+    if (!controlled && lastOperation) {
       onOperationExtracted?.(lastOperation);
     }
-  }, [lastOperation, onOperationExtracted]);
+  }, [controlled, lastOperation, onOperationExtracted]);
 
   function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {
     const newContent = event.target.value;
@@ -59,6 +75,16 @@ export function PlainTextEditor({
       start: event.target.selectionStart ?? newContent.length,
       end: event.target.selectionEnd ?? newContent.length,
     };
+    if (controlled) {
+      const operations = extractOperations(content, newContent);
+      if (operations.length > 0) {
+        onOperationsExtracted?.(operations);
+        operations.forEach((operation) => onOperationExtracted?.(operation));
+      }
+      updateSelection(newSelection);
+      onContentChange?.(newContent, operations.length > 0 || isDirty);
+      return;
+    }
     updateContent(newContent, newSelection);
   }
 
@@ -85,7 +111,7 @@ export function PlainTextEditor({
           role="status"
           aria-live="polite"
         >
-          {isDirty ? "Unsaved local changes" : "Saved"}
+          {statusLabel ?? (isDirty ? "Unsaved local changes" : "Saved")}
         </span>
         {readOnly && <span className="status-badge status-readonly">Read Only</span>}
         <span className="editor-metrics" role="region" aria-label="Cursor position">
