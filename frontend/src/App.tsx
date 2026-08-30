@@ -1,17 +1,27 @@
 import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginForm, RegisterForm } from "./auth/AuthForms";
+import { DocumentDetailPage } from "./documents/DocumentDetailPage";
+import { DocumentsDashboard } from "./documents/DocumentsDashboard";
 
-type Route = "login" | "register" | "app";
+type Route =
+  | { kind: "login" }
+  | { kind: "register" }
+  | { kind: "documents" }
+  | { kind: "document"; documentId: string };
 
 function currentRoute(): Route {
   if (window.location.hash === "#/register") {
-    return "register";
+    return { kind: "register" };
   }
-  if (window.location.hash === "#/app") {
-    return "app";
+  const documentMatch = window.location.hash.match(/^#\/documents\/([^/]+)$/);
+  if (documentMatch !== null) {
+    return { kind: "document", documentId: decodeURIComponent(documentMatch[1]) };
   }
-  return "login";
+  if (window.location.hash === "#/documents" || window.location.hash === "#/app") {
+    return { kind: "documents" };
+  }
+  return { kind: "login" };
 }
 
 function AppContent() {
@@ -29,11 +39,11 @@ function AppContent() {
     return <main><p role="status">Restoring your session…</p></main>;
   }
 
-  if (route === "register" && status === "unauthenticated") {
+  if (route.kind === "register" && status === "unauthenticated") {
     return <main><RegisterForm /></main>;
   }
 
-  if (route === "app" && status === "authenticated" && user !== null) {
+  if (status === "authenticated" && user !== null) {
     async function signOut() {
       setLogoutError(null);
       try {
@@ -45,19 +55,19 @@ function AppContent() {
     }
 
     return (
-      <main>
-        <section className="auth-card" aria-labelledby="account-heading">
-          <p className="eyebrow">Authenticated</p>
-          <h1 id="account-heading">Welcome, {user.displayName}</h1>
-          <p>You are signed in. Documents and collaboration are introduced in later phases.</p>
-          {logoutError !== null && <p className="form-error" role="alert">{logoutError}</p>}
+      <>
+        <nav className="app-navigation" aria-label="Application">
+          <a href="#/documents">Collaborative Editor</a>
+          <span>{user.displayName}</span>
           <button type="button" onClick={() => void signOut()}>Sign out</button>
-        </section>
-      </main>
+        </nav>
+        {logoutError !== null && <p className="global-error" role="alert">{logoutError}</p>}
+        {route.kind === "document" ? <DocumentDetailPage documentId={route.documentId} /> : <DocumentsDashboard />}
+      </>
     );
   }
 
-  return <main><LoginForm heading={route === "app" ? "Sign in to continue" : "Welcome back"} /></main>;
+  return <main><LoginForm heading={route.kind === "login" ? "Welcome back" : "Sign in to continue"} /></main>;
 }
 
 export default function App() {

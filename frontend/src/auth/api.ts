@@ -35,9 +35,12 @@ async function readBody(response: Response): Promise<unknown> {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function apiRequest<T>(path: string, init: RequestInit = {}, accessToken?: string): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
+  if (accessToken !== undefined) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
 
   if (init.body !== undefined) {
     headers.set("Content-Type", "application/json");
@@ -70,31 +73,30 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const authApi = {
   register(input: RegisterInput): Promise<AuthSession> {
-    return request<AuthSession>("/auth/register", {
+    return apiRequest<AuthSession>("/auth/register", {
       method: "POST",
       body: JSON.stringify(input),
     });
   },
 
   login(input: LoginInput): Promise<AuthSession> {
-    return request<AuthSession>("/auth/login", {
+    return apiRequest<AuthSession>("/auth/login", {
       method: "POST",
       body: JSON.stringify(input),
     });
   },
 
   refresh(): Promise<RefreshSession> {
-    return request<RefreshSession>("/auth/refresh", { method: "POST" });
+    return apiRequest<RefreshSession>("/auth/refresh", { method: "POST" });
   },
 
   logout(): Promise<void> {
-    return request<void>("/auth/logout", { method: "POST" });
+    return apiRequest<void>("/auth/logout", { method: "POST" });
   },
 
   currentUser(accessToken: string): Promise<AuthUser> {
-    return request<AuthUser>("/users/me", {
+    return apiRequest<AuthUser>("/users/me", {
       method: "GET",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    }, accessToken);
   },
 };

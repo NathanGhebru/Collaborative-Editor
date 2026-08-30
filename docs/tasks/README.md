@@ -236,7 +236,7 @@ Verification note (2026-08-29): Flyway schema migration `V2__init_document_schem
 
 ### DOC-003: Implement document and sharing UI
 
-**Status:** Not Started  
+**Status:** Complete
 **Depends on:** `AUTH-003`, `DOC-001`  
 **Parallel safe:** Yes, with `DOC-002`.
 

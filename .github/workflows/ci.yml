@@ -66,3 +66,6 @@ jobs:
       - name: Run browser authentication tests
         working-directory: frontend
         run: npm run test:e2e -- auth
+      - name: Run browser document and sharing tests
+        working-directory: frontend
+        run: npm run test:e2e -- documents sharing

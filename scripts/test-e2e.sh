@@ -8,4 +8,8 @@ if [[ ! -d node_modules ]]; then
   npm ci
 fi
 
+if [[ "${1:-}" == "--" ]]; then
+  shift
+fi
+
 npm run test:e2e -- "$@"
