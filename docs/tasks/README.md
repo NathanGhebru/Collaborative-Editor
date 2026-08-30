@@ -6,10 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 2 — Authentication specification complete
-- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen
+- Current phase: Phase 2 — Authentication implementation complete
+- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete
 - Measured benchmarks: none
-- Next task: `AUTH-002` (Implement backend authentication) / `AUTH-003` (Implement browser authentication)
+- Next task: `DOC-001` (Freeze document API and schema limits)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 
@@ -163,15 +163,24 @@ Verification note (2026-08-29): authentication endpoints, request/response forma
 
 ### AUTH-002: Implement backend authentication
 
-**Status:** Not Started  
+**Status:** Complete
+
 **Depends on:** `AUTH-001`  
 **Parallel safe:** Yes, with `AUTH-003` after the contract freezes.
 
-Implement registration, login, refresh rotation, logout/revocation, current-user loading, password hashing, persistence, authorization middleware, and backend/integration/security tests.
+Requirements:
+
+- implement registration, login, refresh rotation, logout/revocation, current-user loading, password hashing, persistence, authorization middleware, and backend/integration/security tests.
+
+Verification:
+
+- `./scripts/test-backend.sh` passes; backend unit tests and controller integration tests pass cleanly.
+
+Verification note (2026-08-29): Flyway schema migration `V1__init_auth_schema.sql` created for `users` and `refresh_tokens`. JPA entities, repositories, BCrypt password encoder, JJWT access token service, SHA-256 refresh token rotation, Spring Security filter chain, `@RestControllerAdvice` global exception handling, and `/api/v1/auth/*` and `/api/v1/users/me` REST controllers implemented. Unit (`AuthServiceTest`) and integration (`AuthControllerTest`) suites pass. `./scripts/test-backend.sh` verified.
 
 ### AUTH-003: Implement browser authentication
 
-**Status:** Not Started  
+**Status:** Complete
 **Depends on:** `AUTH-001`  
 **Parallel safe:** Yes, with `AUTH-002`.
 

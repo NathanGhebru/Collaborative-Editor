@@ -1,0 +1,203 @@
+{
+  "tasks": [
+    {
+      "id": "001-migrate-postgresql-managed-identity",
+      "type": "transform",
+      "description": "Secure Azure Database for PostgreSQL with Managed Identity",
+      "requirements": "Replace the localhost PostgreSQL configuration with Azure Database for PostgreSQL Flexible Server, configure managed identity or passwordless access, and update the Spring Boot datasource settings to run securely in Azure.",
+      "environmentConfiguration": null,
+      "kbId": "mi-postgresql",
+      "skills": [
+        { "name": "migration-mi-postgresql", "location": "builtin" }
+      ],
+      "dependsOn": [],
+      "successCriteria": {
+        "passBuild": "true",
+        "passUnitTests": "true",
+        "passSecurityScan": "true"
+      }
+    },
+    {
+      "id": "002-migrate-plaintext-secrets-to-keyvault",
+      "type": "transform",
+      "description": "Migrate from Plaintext Credentials to Azure Key Vault",
+      "requirements": "Move credential and secret values out of application.yaml and other config files into Azure Key Vault, then wire the application to read them through secure secret references and environment configuration.",
+      "environmentConfiguration": null,
+      "kbId": "plaintext-credential-to-azure-keyvault",
+      "skills": [
+        { "name": "migration-plaintext-credential-to-azure-keyvault", "location": "builtin" }
+      ],
+      "dependsOn": [],
+      "successCriteria": {
+        "passBuild": "true",
+        "passUnitTests": "true",
+        "passSecurityScan": "true"
+      }
+    },
+    {
+      "id": "003-remove-hardcoded-credentials",
+      "type": "security",
+      "description": "Remove Hardcoded Credentials",
+      "requirements": "Scan the backend for default or well-known passwords, remove hardcoded credential values, and replace them with environment-backed or Azure-managed secrets.",
+      "environmentConfiguration": null,
+      "kbId": null,
+      "skills": [
+        { "name": "security-hardcoded-credential-removal", "location": "builtin" }
+      ],
+      "dependsOn": ["002-migrate-plaintext-secrets-to-keyvault"],
+      "successCriteria": {
+        "passBuild": "true",
+        "passUnitTests": "true",
+        "passSecurityScan": "true"
+      }
+    },
+    {
+      "id": "004-upgrade-java-version",
+      "type": "upgrade",
+      "description": "Upgrade Java Version",
+      "requirements": "Upgrade the project to the latest LTS Java baseline, update the Maven configuration and runtime assumptions, and confirm the application builds and tests cleanly on the new version.",
+      "environmentConfiguration": null,
+      "kbId": "java-version-upgrade",
+      "skills": [
+        { "name": "java-version-upgrade", "location": "builtin" }
+      ],
+      "dependsOn": ["002-migrate-plaintext-secrets-to-keyvault", "003-remove-hardcoded-credentials"],
+      "successCriteria": {
+        "passBuild": "true",
+        "passUnitTests": "true",
+        "passSecurityScan": "true"
+      }
+    },
+    {
+      "id": "005-migrate-local-resource-to-azure",
+      "type": "transform",
+      "description": "Migrate the Local Resource to Azure",
+      "requirements": "Replace localhost-bound runtime dependencies with Azure-hosted equivalents and ensure the app no longer relies on local-only resource access patterns.",
+      "environmentConfiguration": null,
+      "kbId": null,
+      "skills": [
+        { "name": "migration-local-resource-to-azure", "location": "builtin" }
+      ],
+      "dependsOn": ["001-migrate-postgresql-managed-identity"],
+      "successCriteria": {
+        "passBuild": "true",
+        "passUnitTests": "true",
+        "passSecurityScan": "true"
+      }
+    },
+    {
+      "id": "006-check-hardcoded-ip-address",
+      "type": "security",
+      "description": "Check hardcoded IP address",
+      "requirements": "Inventory any hardcoded IP addresses or localhost network assumptions used by tests or configuration, then replace them with environment-based Azure endpoints or secure defaults.",
+      "environmentConfiguration": null,
+      "kbId": null,
+      "skills": [
+        { "name": "security-hardcoded-ip-remediation", "location": "builtin" }
+      ],
+      "dependsOn": ["005-migrate-local-resource-to-azure"],
+      "successCriteria": {
+        "passBuild": "true",
+        "passUnitTests": "true",
+        "passSecurityScan": "true"
+      }
+    },
+    {
+      "id": "007-cwe-259-remediation",
+      "type": "security",
+      "description": "Scan and resolve CWE-259 vulnerabilities for this project",
+      "requirements": "Audit the project for password-storage and secret-exposure patterns that match CWE-259, remove insecure storage patterns, and enforce secure secret management with Azure Key Vault or an equivalent managed secret system.",
+      "environmentConfiguration": null,
+      "kbId": null,
+      "skills": [
+        { "name": "security-cwe-259-remediation", "location": "builtin" }
+      ],
+      "dependsOn": ["002-migrate-plaintext-secrets-to-keyvault", "003-remove-hardcoded-credentials", "004-upgrade-java-version"],
+      "successCriteria": {
+        "passBuild": "true",
+        "passUnitTests": "true",
+        "passSecurityScan": "true",
+        "cweResolved": "CWE-259"
+      }
+    },
+    {
+      "id": "008-cwe-321-remediation",
+      "type": "security",
+      "description": "Scan and resolve CWE-321 vulnerabilities for this project",
+      "requirements": "Review authentication and credential handling for CWE-321 patterns, replace embedded or predictable credential material with managed identities, Key Vault, or equivalent secure credentialing, and verify authentication flows remain functional.",
+      "environmentConfiguration": null,
+      "kbId": null,
+      "skills": [
+        { "name": "security-cwe-321-remediation", "location": "builtin" }
+      ],
+      "dependsOn": ["002-migrate-plaintext-secrets-to-keyvault", "003-remove-hardcoded-credentials"],
+      "successCriteria": {
+        "passBuild": "true",
+        "passUnitTests": "true",
+        "passSecurityScan": "true",
+        "cweResolved": "CWE-321"
+      }
+    },
+    {
+      "id": "009-cwe-732-remediation",
+      "type": "security",
+      "description": "Scan and resolve CWE-732 vulnerabilities for this project",
+      "requirements": "Audit permissions and access control for configuration files, credentials, and sensitive runtime resources to ensure only the required identities can read or modify them, and correct any overly broad access exposure.",
+      "environmentConfiguration": null,
+      "kbId": null,
+      "skills": [
+        { "name": "security-cwe-732-remediation", "location": "builtin" }
+      ],
+      "dependsOn": ["002-migrate-plaintext-secrets-to-keyvault", "003-remove-hardcoded-credentials", "004-upgrade-java-version"],
+      "successCriteria": {
+        "passBuild": "true",
+        "passUnitTests": "true",
+        "passSecurityScan": "true",
+        "cweResolved": "CWE-732"
+      }
+    },
+    {
+      "id": "010-cwe-778-remediation",
+      "type": "security",
+      "description": "Scan and resolve CWE-778 vulnerabilities for this project",
+      "requirements": "Review startup configuration, default credential behavior, and environment initialization for unsafe defaults or insecure initialization sequences that match CWE-778, then apply a hardened configuration baseline.",
+      "environmentConfiguration": null,
+      "kbId": null,
+      "skills": [
+        { "name": "security-cwe-778-remediation", "location": "builtin" }
+      ],
+      "dependsOn": ["003-remove-hardcoded-credentials", "004-upgrade-java-version"],
+      "successCriteria": {
+        "passBuild": "true",
+        "passUnitTests": "true",
+        "passSecurityScan": "true",
+        "cweResolved": "CWE-778"
+      }
+    },
+    {
+      "id": "011-cwe-798-remediation",
+      "type": "security",
+      "description": "Scan and resolve CWE-798 vulnerabilities for this project",
+      "requirements": "Search the codebase for embedded credentials and hardcoded secrets matching CWE-798, remove or rotate exposed values, and replace them with managed secret references and secure runtime configuration.",
+      "environmentConfiguration": null,
+      "kbId": null,
+      "skills": [
+        { "name": "security-cwe-798-remediation", "location": "builtin" }
+      ],
+      "dependsOn": ["002-migrate-plaintext-secrets-to-keyvault", "003-remove-hardcoded-credentials", "004-upgrade-java-version"],
+      "successCriteria": {
+        "passBuild": "true",
+        "passUnitTests": "true",
+        "passSecurityScan": "true",
+        "cweResolved": "CWE-798"
+      }
+    }
+  ],
+  "metadata": {
+    "language": "java",
+    "planName": "collaborative-editor-azure-modernization",
+    "projectName": "Collaborative-Editor",
+    "createdAt": "2026-08-29T00:00:00Z",
+    "version": "1.0"
+  }
+}

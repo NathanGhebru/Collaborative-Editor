@@ -37,17 +37,59 @@ h1 {
   text-transform: uppercase;
 }
 
-.status-card {
+.auth-card {
   background: #19253a;
   border: 1px solid #32445f;
   border-radius: 0.75rem;
   display: grid;
   gap: 0.5rem;
-  margin-top: 1rem;
   padding: 1.25rem;
 }
 
-output {
-  color: #a6e3a1;
+form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+label {
   font-weight: 700;
+  margin-top: 0.5rem;
+}
+
+input,
+button {
+  border-radius: 0.4rem;
+  font: inherit;
+  padding: 0.7rem 0.8rem;
+}
+
+input {
+  border: 1px solid #64748b;
+}
+
+button {
+  background: #74c7ec;
+  border: 0;
+  color: #101827;
+  cursor: pointer;
+  font-weight: 800;
+  margin-top: 0.75rem;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.form-error {
+  color: #fda4af;
+  font-weight: 700;
+}
+
+.notice {
+  color: #a6e3a1;
+}
+
+.auth-switch {
+  margin-top: 0.5rem;
 }
