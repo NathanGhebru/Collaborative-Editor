@@ -396,7 +396,7 @@ Verification note (2026-08-30): Fully integrated and verified RT-002 backend ser
 
 ### RT-003: Implement same-epoch reconnect and recovery tests
 
-**Status:** Not Started  
+**Status:** Complete  
 **Depends on:** `RT-002`  
 **Parallel safe:** Client work and adversarial browser tests may proceed together.
 
@@ -408,6 +408,8 @@ Phase verification:
 ./scripts/test-websocket.sh
 ./scripts/test-e2e.sh -- collaboration reconnect
 ```
+
+Verification note (2026-08-30): Implemented same-epoch reconnect recovery in `CollaborationClient` and verified full convergence across all 14 recovery scenarios. Reconnecting clients preserve tab `clientId` across connection attempts, acquire a fresh single-use ticket via REST (`POST /api/v1/documents/{documentId}/realtime-ticket`), perform automatic exponential backoff with configurable jitter and retry policy on retryable closures (1001 GOING_AWAY, 1006 abnormal close, 1008 policy violation, 1011 server error, transport errors), present visible `"Reconnecting…"` status in UI, re-send `client.hello` with `knownRevision = confirmedRevision`, rebase unacknowledged in-flight and locally buffered operations across catch-up canonical history, deduplicate already-committed canonical history (revisions $\le$ confirmedRevision), detect own committed in-flight operations in catch-up streams to acknowledge without redundant retransmission, retransmit uncommitted in-flight operations with identical `clientOperationId` and updated `baseRevision`, strictly enforce single-stream in-order delivery with `REVISION_GAP` fatal resync triggers, and treat session supersession (4004) and epoch mismatch as non-retryable fatal resync boundaries. Added comprehensive unit tests in `CollaborationClient.test.ts` (25 tests) and two-client reconnect Playwright E2E integration test in `collaboration-reconnect.spec.ts`. All 107 frontend Vitest tests, 144 backend tests, and `./scripts/validate-docs.sh` pass cleanly.
 
 Phase exit: two browsers concurrently edit through one server, receive only committed operations, reconnect, and converge.
 

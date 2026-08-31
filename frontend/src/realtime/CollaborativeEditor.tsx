@@ -40,6 +40,8 @@ export function collaborationStatusLabel(snapshot: CollaborationSnapshot): strin
     case "fetching-ticket":
     case "connecting":
       return "Connecting…";
+    case "reconnecting":
+      return "Reconnecting…";
     case "awaiting-ready":
       return "Synchronizing…";
     case "active":
