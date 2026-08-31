@@ -32,17 +32,29 @@ final class DurableSequencingPostgresProbe {
     }
 
     void reset() {
-        jdbc.execute("""
-                TRUNCATE TABLE
-                    document_operation_ids,
-                    document_operation_batches,
-                    document_permissions,
-                    document_snapshots,
-                    refresh_tokens,
-                    documents,
-                    users
-                CASCADE
-                """);
+        try {
+            jdbc.execute("""
+                    TRUNCATE TABLE
+                        document_operation_ids,
+                        document_operation_batches,
+                        document_permissions,
+                        document_snapshots,
+                        refresh_tokens,
+                        documents,
+                        users
+                    CASCADE
+                    """);
+        } catch (Exception e) {
+            jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+            jdbc.execute("DELETE FROM document_operation_ids");
+            jdbc.execute("DELETE FROM document_operation_batches");
+            jdbc.execute("DELETE FROM document_permissions");
+            jdbc.execute("DELETE FROM document_snapshots");
+            jdbc.execute("DELETE FROM refresh_tokens");
+            jdbc.execute("DELETE FROM documents");
+            jdbc.execute("DELETE FROM users");
+            jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+        }
     }
 
     TestDocument createDocument(String initialContent) {

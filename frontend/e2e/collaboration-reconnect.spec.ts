@@ -23,18 +23,15 @@ test.describe("Two-Client Collaborative Editing and Reconnect Recovery", () => {
 
     // Shared server state for the mock realtime hub
     let currentRevision = 0;
-    let docContent = "Hello";
     const docContent = "Hello";
     const committedOperations: Array<{
       revision: number;
       clientId: string;
       clientOperationId: string;
       actorUserId: string;
-      operation: any;
       operation: unknown;
     }> = [];
 
-    const activeSockets = new Map<string, any>();
     const activeSockets = new Map<string, { send: (data: string) => void; close: (options?: { code?: number; reason?: string }) => void }>();
 
     const setupContext = async (contextUser: typeof userA, permission: "OWNER" | "EDITOR") => {
