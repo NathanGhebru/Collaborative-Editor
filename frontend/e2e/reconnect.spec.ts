@@ -94,6 +94,114 @@ test("same-tab reconnect uses a fresh ticket and retries an uncommitted edit wit
   await expect(editor).toHaveValue("abcX");
 });
 
+test("same-tab reconnect handles committed-but-unobserved edit without creating duplicate revision", async ({ page }) => {
+  const ticketRequests: string[] = [];
+  const socketTickets: string[] = [];
+  const clientIds: string[] = [];
+  const operationIds: string[] = [];
+  let socketCount = 0;
+  let committedRevision = 0;
+
+  await mockAuthenticatedDocument(page);
+  await page.route(`**/api/v1/documents/${DOCUMENT_ID}/realtime-ticket`, (route) => {
+    const ticket = `rt_committed_unobserved_${ticketRequests.length + 1}`;
+    ticketRequests.push(ticket);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ticket,
+        expiresAt: "2099-08-30T12:16:00Z",
+        websocketPath: `/ws/v1/documents/${DOCUMENT_ID}`,
+      }),
+    });
+  });
+
+  await page.routeWebSocket(/\/ws\/v1\/documents\//, (socket) => {
+    socketCount += 1;
+    const connectionNumber = socketCount;
+    const socketTicket = new URL(socket.url()).searchParams.get("ticket");
+    socketTickets.push(socketTicket!);
+
+    socket.onMessage(async (rawFrame) => {
+      const frame = JSON.parse(rawFrame.toString()) as {
+        type: string;
+        clientId: string;
+        payload: {
+          knownRevision?: number;
+          clientOperationId?: string;
+          operation?: Record<string, unknown>;
+        };
+      };
+
+      if (frame.type === "client.hello") {
+        clientIds.push(frame.clientId);
+        if (connectionNumber === 2 && committedRevision === 1) {
+          // Catch-up stream for committed operation X sent before server.ready
+          socket.send(JSON.stringify(serverEnvelope("server.operations", {
+            operations: [{
+              revision: 1,
+              clientId: frame.clientId,
+              clientOperationId: operationIds[0],
+              actorUserId: USER_ID,
+              operation: { kind: "INSERT", position: 3, text: "X" },
+            }],
+          })));
+        }
+        socket.send(JSON.stringify(serverEnvelope("server.ready", {
+          connectionId: `connection-${connectionNumber}`,
+          revision: connectionNumber === 2 ? 1 : 0,
+          role: "OWNER",
+        })));
+        return;
+      }
+
+      if (frame.type === "client.operation") {
+        operationIds.push(frame.payload.clientOperationId!);
+        if (connectionNumber === 1) {
+          // Scenario C: Server commits to DB (revision 1), but socket drops before frame sent back.
+          committedRevision = 1;
+          await socket.close({ code: 1006, reason: "abnormal drop post-commit" });
+          return;
+        }
+
+        // Connection 2: subsequent edit Y
+        committedRevision = 2;
+        socket.send(JSON.stringify(serverEnvelope("server.operations", {
+          operations: [{
+            revision: 2,
+            clientId: frame.clientId,
+            clientOperationId: frame.payload.clientOperationId,
+            actorUserId: USER_ID,
+            operation: frame.payload.operation,
+          }],
+        })));
+      }
+    });
+  });
+
+  await page.goto(`/#/documents/${DOCUMENT_ID}`);
+  const editor = page.getByLabel("Document text editor");
+  await expect(editor).toHaveValue("abc");
+
+  // First edit "X"
+  await editor.fill("abcX");
+  await expect(page.getByRole("status")).toHaveText(/Reconnect/i);
+  await expect.poll(() => socketTickets.length).toBe(2);
+  await expect(page.getByRole("status")).toHaveText("Saved");
+
+  // Subsequent edit "Y" succeeds
+  await editor.fill("abcXY");
+  await expect(page.getByRole("status")).toHaveText("Saved");
+
+  // Invariants verified:
+  // 1. Committed operation X (operationIds[0]) was NOT retransmitted on socket 2 after catch-up
+  const socket2Operations = operationIds.slice(1);
+  expect(socket2Operations).not.toContain(operationIds[0]);
+  expect(committedRevision).toBe(2); // Exactly 1 revision for X, 1 for Y
+  expect(new Set(clientIds).size).toBe(1); // Stable same-tab clientId
+  await expect(editor).toHaveValue("abcXY");
+});
+
 async function mockAuthenticatedDocument(page: Page): Promise<void> {
   const user = {
     id: USER_ID,

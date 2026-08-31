@@ -6,10 +6,10 @@ This file tracks implementation order, dependencies, task status, and verificati
 
 ## Current state
 
-- Current phase: Phase 7 — Single-server real-time collaboration (RT-002 server portion complete)
-- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen; OT-002 Java and TypeScript OT engines complete and verified; PERS-001 canonical operation persistence complete; PERS-002 durable OT sequencing complete; RT-001 protocol frozen; RT-002 ticket issuance and server WebSocket collaboration complete
+- Current phase: Phase 8 — Presence and remote cursors
+- Application code: BOOT-001 skeleton complete; AUTH-001 contract frozen; AUTH-002 backend auth complete; AUTH-003 browser auth complete; DOC-001 contract frozen; DOC-002 document backend complete; DOC-003 document UI complete; EDIT-001 local editor complete; OT-001 synchronization contract frozen; OT-002 Java and TypeScript OT engines complete and verified; PERS-001 canonical operation persistence complete; PERS-002 durable OT sequencing complete; RT-001 protocol frozen; RT-002 ticket issuance and server WebSocket collaboration complete; RT-003 same-epoch reconnect and recovery verified across real PostgreSQL 17 and Playwright E2E suites
 - Measured benchmarks: none
-- Next task: `RT-002` (Frontend client implementation) / `RT-003` (Same-epoch reconnect and recovery tests)
+- Next task: `PRES-001` (Implement ephemeral collaboration awareness)
 
 Status values are `Not Started`, `In Progress`, `Blocked`, and `Complete`. A task becomes `Complete` only after its listed verification succeeds and required documentation is updated.
 

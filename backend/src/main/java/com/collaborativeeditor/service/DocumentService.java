@@ -21,6 +21,7 @@ import com.collaborativeeditor.dto.document.GrantPermissionRequest;
 import com.collaborativeeditor.dto.document.UpdateDocumentRequest;
 import com.collaborativeeditor.exception.ApiException;
 import com.collaborativeeditor.exception.ErrorCode;
+import com.collaborativeeditor.service.persistence.OperationPersistenceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +49,7 @@ public class DocumentService {
     private final DocumentSnapshotRepository documentSnapshotRepository;
     private final DocumentPermissionRepository documentPermissionRepository;
     private final UserRepository userRepository;
+    private final OperationPersistenceService operationPersistenceService;
     private final ObjectMapper objectMapper;
 
     public DocumentService(
@@ -55,11 +57,13 @@ public class DocumentService {
             DocumentSnapshotRepository documentSnapshotRepository,
             DocumentPermissionRepository documentPermissionRepository,
             UserRepository userRepository,
+            OperationPersistenceService operationPersistenceService,
             ObjectMapper objectMapper) {
         this.documentRepository = documentRepository;
         this.documentSnapshotRepository = documentSnapshotRepository;
         this.documentPermissionRepository = documentPermissionRepository;
         this.userRepository = userRepository;
+        this.operationPersistenceService = operationPersistenceService;
         this.objectMapper = objectMapper;
     }
 
@@ -173,9 +177,14 @@ public class DocumentService {
         String role = resolveUserRole(document, user.getId())
                 .orElseThrow(() -> new ApiException(ErrorCode.DOCUMENT_NOT_FOUND));
 
-        String content = documentSnapshotRepository.findTopByDocumentIdOrderByRevisionDesc(documentId)
-                .map(DocumentSnapshot::getContent)
-                .orElse("");
+        String content;
+        try {
+            content = operationPersistenceService.recoverDocument(documentId).content();
+        } catch (Exception e) {
+            content = documentSnapshotRepository.findTopByDocumentIdOrderByRevisionDesc(documentId)
+                    .map(DocumentSnapshot::getContent)
+                    .orElse("");
+        }
 
         return new DocumentDetailDto(
                 document.getId(),

@@ -20,6 +20,7 @@ import com.collaborativeeditor.dto.document.GrantPermissionRequest;
 import com.collaborativeeditor.dto.document.UpdateDocumentRequest;
 import com.collaborativeeditor.exception.ApiException;
 import com.collaborativeeditor.exception.ErrorCode;
+import com.collaborativeeditor.service.persistence.OperationPersistenceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,6 +57,9 @@ class DocumentServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private OperationPersistenceService operationPersistenceService;
+
     private ObjectMapper objectMapper;
     private DocumentService documentService;
 
@@ -71,6 +75,7 @@ class DocumentServiceTest {
                 documentSnapshotRepository,
                 documentPermissionRepository,
                 userRepository,
+                operationPersistenceService,
                 objectMapper
         );
 
